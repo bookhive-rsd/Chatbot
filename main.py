@@ -3,14 +3,13 @@
 # This file contains the complete backend for LinguaLink, a real-time chat application
 # built with FastAPI, MongoDB, and integrated with the Gemini API for translation.
 #
-# Version 1.5.2 Features:
+# Version 1.5.3 Features:
+# - Dynamic Translation: Messages are now translated on-the-fly if a translation for the user's current language is missing.
 # - UI Enhancement: User profile pictures are now included in WebSocket message broadcasts.
 # - Enhanced translation to handle transliterated messages (e.g., Telugu in English script).
 # - Multimedia Messaging: Support for sending images, audio, and documents.
 # - Secure File Uploads: Files are saved with unique, secure names.
 # - Static File Serving: Uploaded files are served securely to the frontend.
-# - Message Type Differentiation: Database now stores message type (text, image, audio, file).
-# - Translation logic now correctly ignores non-text messages.
 # - Added robust error handling for `InvalidToken` to prevent crashes from old data.
 
 import os
@@ -59,7 +58,7 @@ oauth_states: Dict[str, float] = {}
 app = FastAPI(
     title="LinguaLink API",
     description="Backend for a WhatsApp-style chat application with real-time translation and presence.",
-    version="1.5.2"
+    version="1.5.3"
 )
 
 # Create uploads directory if it doesn't exist
@@ -171,7 +170,7 @@ def decrypt_message(encrypted_text: str) -> str:
 async def translate_text_gemini(text: str, target_language: str) -> str:
     if not GEMINI_API_KEY or not text: return text
     headers = {"Content-Type": "application/json"}
-    prompt = f"Identify the language of the following text. The text may be a transliteration of a language like Hindi or Telugu into English characters (e.g., 'em chesthunavu'). Then, translate the identified text to {target_language}. Provide only the final, translated text, without any extra explanation or preamble. Here is the text: '{text}'"
+    prompt = f"Identify the language of the following text, which might be in English letters but represent another language (like Hinglish or Tanglish). Then, translate it to {target_language}. Provide only the final translation. Text: '{text}'"
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     async with httpx.AsyncClient() as client:
         try:
@@ -305,7 +304,6 @@ async def get_user_chats(current_user: User = Depends(get_current_user)):
             if last_message_type == "text":
                 last_message_content = decrypt_message(last_message["original_content"])
             else:
-                # For files, the "content" is the filename
                 last_message_content = last_message["original_content"]
 
 
@@ -353,6 +351,7 @@ async def create_chat(participant_email: str, current_user: User = Depends(get_c
     
     return ChatDetail(_id=chat_id_str, participants=p_list, created_at=chat_doc["created_at"])
 
+# MODIFIED: This function now generates missing translations on-the-fly.
 @app.get("/chats/{chat_id}/messages", response_model=List[Message], response_model_by_alias=False)
 async def get_chat_messages(chat_id: str, current_user: User = Depends(get_current_user)):
     try: chat_object_id = ObjectId(chat_id)
@@ -363,12 +362,36 @@ async def get_chat_messages(chat_id: str, current_user: User = Depends(get_curre
 
     messages_data = []
     messages_cursor = messages_collection.find({"chat_id": chat_id}).sort("created_at", ASCENDING)
+    
+    user_lang = current_user.default_language
+    
     async for msg in messages_cursor:
-        msg["_id"] = str(msg["_id"])
         if msg.get("message_type", "text") == "text":
-            msg["original_content"]=decrypt_message(msg["original_content"])
-            msg["translations"]={lang: decrypt_message(text) for lang, text in msg.get("translations", {}).items()}
+            decrypted_original = decrypt_message(msg["original_content"])
+            msg["original_content"] = decrypted_original # Send decrypted original content
+            
+            # Decrypt existing translations
+            decrypted_translations = {lang: decrypt_message(text) for lang, text in msg.get("translations", {}).items()}
+            
+            # Check if translation for the current user's language is missing
+            if user_lang not in decrypted_translations:
+                # Generate new translation
+                translated_text = await translate_text_gemini(decrypted_original, user_lang)
+                if translated_text != decrypted_original:
+                    # Save the new translation to the database
+                    encrypted_new_translation = encrypt_message(translated_text)
+                    await messages_collection.update_one(
+                        {"_id": msg["_id"]},
+                        {"$set": {f"translations.{user_lang}": encrypted_new_translation}}
+                    )
+                    # Add to the response object
+                    decrypted_translations[user_lang] = translated_text
+            
+            msg["translations"] = decrypted_translations
+
+        msg["_id"] = str(msg["_id"])
         messages_data.append(Message(**msg))
+        
     return messages_data
 
 # --- WebSocket Endpoint ---
@@ -392,7 +415,6 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
             if not chat: continue
 
             if msg_type == "message":
-                # ... (existing message sending logic)
                 message_content_type = message_data.get("message_type", "text")
                 new_message = {"chat_id": chat_id, "sender_id": current_user.id, "message_type": message_content_type, "created_at": datetime.utcnow(), "translations": {}, "reactions": {}}
                 
@@ -402,7 +424,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                     if not content: continue
                     new_message["original_content"] = encrypt_message(content)
                     content_to_broadcast = content
-                else: # File-based messages
+                else: 
                     file_url, original_filename = message_data.get("file_url"), message_data.get("original_content")
                     if not file_url or not original_filename: continue
                     new_message["file_url"], new_message["original_content"] = file_url, original_filename
@@ -412,17 +434,11 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                 message_id = result.inserted_id
                 
                 instant_broadcast_msg = {
-                    "type": "new_message", 
-                    "id": str(message_id), 
-                    "chat_id": chat_id, 
-                    "sender_id": current_user.id,
-                    "sender_picture": current_user.picture, # <-- MODIFIED: Added sender picture
-                    "message_type": message_content_type, 
-                    "original_content": content_to_broadcast, 
-                    "file_url": new_message.get("file_url"), 
-                    "translations": {}, 
-                    "reactions": {}, 
-                    "created_at": new_message["created_at"].isoformat()
+                    "type": "new_message", "id": str(message_id), "chat_id": chat_id, 
+                    "sender_id": current_user.id, "sender_picture": current_user.picture,
+                    "message_type": message_content_type, "original_content": content_to_broadcast, 
+                    "file_url": new_message.get("file_url"), "translations": {}, 
+                    "reactions": {}, "created_at": new_message["created_at"].isoformat()
                 }
                 await manager.broadcast_to_users(chat["participants"], json.dumps(instant_broadcast_msg))
 
@@ -443,11 +459,10 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                 
                 if emoji not in reactions: reactions[emoji] = []
                 
-                # Toggle reaction
                 if user_id in reactions[emoji]: reactions[emoji].remove(user_id)
                 else: reactions[emoji].append(user_id)
                 
-                if not reactions[emoji]: del reactions[emoji] # Clean up empty reaction list
+                if not reactions[emoji]: del reactions[emoji] 
 
                 await messages_collection.update_one({"_id": message_id}, {"$set": {"reactions": reactions}})
 

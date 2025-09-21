@@ -21,7 +21,7 @@
             position: relative;
             padding: 0.75rem 1rem;
             border-radius: 1.25rem;
-            max-width: 100%; /* Changed from 80% to allow wrapper to control width */
+            max-width: 100%; 
         }
         .bubble:after { content:""; position:absolute; bottom:-2px; width:10px; height:10px; transform:rotate(45deg); }
         
@@ -30,7 +30,7 @@
             border-bottom-right-radius: 0.25rem;
         }
         .bubble.them {
-            background:#111827; /* Changed from chocolate */
+            background:#111827; 
             border-bottom-left-radius: 0.25rem;
         }
         .bubble.me:after { right:12px; background:#5b7cff; }
@@ -39,13 +39,11 @@
         input[type="file"] { display: none; }
         emoji-picker { position: absolute; bottom: 100%; left: 0; margin-bottom: 8px; z-index: 50; }
         
-        /* Reactions Styles */
         .message-wrapper { position: relative; display: flex; flex-direction: column; }
         .message-wrapper.mine { align-items: flex-end; }
         .message-wrapper.theirs { align-items: flex-start; }
         .reaction-button { position: absolute; top: 50%; transform: translateY(-50%); z-index: 10; opacity: 0; transition: opacity 0.2s; }
         
-        /* MODIFIED: Adjust reaction button position based on avatar */
         .message-wrapper:hover .reaction-button { opacity: 1; }
         .mine .reaction-button { right: -1.8rem; }
         .theirs .reaction-button { left: -1.8rem; }
@@ -106,7 +104,26 @@
                             <div class="relative"><div id="contact-avatar-wrapper" class="h-10 w-10 rounded-xl bg-gray-700 grid place-items-center font-bold"></div><div id="contact-status-dot" class="absolute -bottom-0.5 -right-0.5 h-3 w-3 bg-gray-500 rounded-full border-2 border-slate-800"></div></div>
                             <div class="min-w-0"><h2 id="contact-name" class="font-semibold truncate">Select a chat</h2><p id="contact-status" class="text-xs text-white/60">Offline</p></div>
                         </div>
-                        <div class="flex items-center gap-2"><label class="text-xs text-white/70">My language</label><select id="langSelect" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"><option value="en">English</option><option value="hi">हिन्दी (Hindi)</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option></select></div>
+                        <div class="flex items-center gap-2">
+                            <label class="text-xs text-white/70">My language</label>
+                            <select id="langSelect" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
+                                <option value="en">English</option>
+                                <option value="hi">Hindi</option>
+                                <option value="te">Telugu</option>
+                                <option value="es">Spanish</option>
+                                <option value="fr">French</option>
+                                <option value="de">German</option>
+                                <option value="zh">Chinese</option>
+                                <option value="ja">Japanese</option>
+                                <option value="ko">Korean</option>
+                                <option value="pt">Portuguese</option>
+                                <option value="ru">Russian</option>
+                                <option value="ar">Arabic</option>
+                                <option value="bn">Bengali</option>
+                                <option value="ta">Tamil</option>
+                                <option value="mr">Marathi</option>
+                            </select>
+                        </div>
                     </div>
 
                     <ul id="messages" class="flex-1 overflow-y-auto nice-scroll p-4 lg:p-6 space-y-4 min-h-0"></ul>
@@ -139,17 +156,14 @@
     </div>
 
     <script>
-    // --- Configuration & State ---
     const API_BASE_URL = window.location.origin;
     const WS_BASE_URL = window.location.origin.replace(/^http/, 'ws');
     let state = { token: null, currentUser: null, chats: [], activeChatId: null, ws: null };
     
-    // --- DOM Elements ---
     const el = q => document.querySelector(q);
     const messagesContainer = el('#messages'), messageInput = el('#messageInput'), 
           emojiPicker = el('emoji-picker'), fileInput = el('#fileInput');
 
-    // --- UTILS ---
     const formatTime = iso => new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
     function formatLastSeen(iso) {
         if (!iso) return 'Offline';
@@ -160,11 +174,9 @@
         return 'last seen yesterday';
     }
 
-    // --- MODAL ---
     function showModal(html) { el('#modalContent').innerHTML = html; el('#modal').classList.remove('hidden'); }
     function hideModal() { el('#modal').classList.add('hidden'); }
 
-    // --- AUTH & INIT ---
     function logout() { localStorage.removeItem('lingua_link_token'); window.location.href = '/'; }
     async function initializeApp() {
         if (!state.token) { updateAuthUI(); return; }
@@ -186,7 +198,6 @@
         state.chats.sort((a, b) => new Date(b.last_message_timestamp || 0) - new Date(a.last_message_timestamp || 0));
     }
 
-    // --- WEBSOCKET HANDLING ---
     function connectWebSocket() {
         if (state.ws) state.ws.close();
         state.ws = new WebSocket(`${WS_BASE_URL}/ws?token=${state.token}`);
@@ -239,24 +250,35 @@
         return chat ? chat.messages.find(m => m.id === messageId) : null;
     }
 
-    // --- UI & RENDERING ---
     async function selectChat(chatId) {
-        if (!chatId || state.activeChatId === chatId) return;
+        if (!chatId) return;
         state.activeChatId = chatId;
         
         el('#main-chat-area').classList.remove('opacity-50', 'pointer-events-none');
         messagesContainer.innerHTML = '<div class="text-white/50 text-center text-sm">Loading...</div>';
         renderHeader();
         
-        try {
-            const res = await fetch(`${API_BASE_URL}/chats/${chatId}/messages?token=${state.token}`);
-            if (!res.ok) throw new Error('Failed to load messages.');
-            const chat = state.chats.find(c => c.id === chatId);
-            if(chat) chat.messages = await res.json();
-            renderMessages();
-        } catch (error) { messagesContainer.innerHTML = `<div class="text-rose-400 text-center text-sm">${error.message}</div>`; }
+        await reloadMessagesForActiveChat();
         renderChatList();
     }
+
+    // MODIFIED: Created a new function to reload messages for the active chat
+    async function reloadMessagesForActiveChat() {
+        if (!state.activeChatId) return;
+        try {
+            const res = await fetch(`${API_BASE_URL}/chats/${state.activeChatId}/messages?token=${state.token}`);
+            if (!res.ok) throw new Error('Failed to reload messages.');
+            const chat = state.chats.find(c => c.id === state.activeChatId);
+            if(chat) {
+                chat.messages = await res.json();
+                renderMessages();
+            }
+        } catch (error) { 
+            console.error(error);
+            messagesContainer.innerHTML = `<div class="text-rose-400 text-center text-sm">${error.message}</div>`;
+        }
+    }
+
     function renderAll() { if (state.currentUser) { renderMyProfile(); renderChatList(); renderHeader(); } }
     function updateAuthUI() {
         const showChat = state.token && state.currentUser;
@@ -305,12 +327,11 @@
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
     
-    // MODIFIED: Renders a single message with avatar
     function createMessageDOM(msg) {
         const mine = msg.sender_id === state.currentUser.id;
         const chat = state.chats.find(c => c.id === state.activeChatId);
         const sender = chat ? chat.participants.find(p => p.id === msg.sender_id) : { name: 'User', picture: '' };
-        const senderPicture = msg.sender_picture || sender.picture; // Use sender_picture from WS if available
+        const senderPicture = msg.sender_picture || sender.picture; 
 
         const li = document.createElement('li');
         li.id = `msg-${msg.id}`;
@@ -339,7 +360,6 @@
         return li;
     }
     
-    // MODIFIED: Re-renders the message to update it
     function updateMessageDOM(msg) {
         const oldMsgElement = document.getElementById(`msg-${msg.id}`);
         if (oldMsgElement) {
@@ -377,7 +397,6 @@
         }).join('');
     }
 
-    // --- EVENT LISTENERS ---
     document.addEventListener('click', e => {
         if (!e.target.closest('.reaction-button') && !e.target.closest('.reaction-picker')) {
             document.querySelectorAll('.reaction-picker').forEach(p => p.classList.add('hidden'));
@@ -464,20 +483,34 @@
             await fetchChats(); selectChat(newChat.id);
         } catch(error) { showModal(`<h4>Error</h4><p>${error.message}</p>`); }
     });
+    
+    // MODIFIED: This listener now re-fetches messages to get new translations.
     el('#langSelect').addEventListener('change', async e => {
-        state.currentUser.default_language = e.target.value;
-        await fetch(`${API_BASE_URL}/users/me?token=${state.token}`, {
-            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ default_language: e.target.value }),
-        });
-        renderMessages();
+        const newLang = e.target.value;
+        if (state.currentUser.default_language === newLang) return;
+        state.currentUser.default_language = newLang;
+        
+        // Re-fetch messages if a chat is active to get new translations
+        if(state.activeChatId) {
+            await reloadMessagesForActiveChat();
+        }
+
+        // Update the backend
+        try {
+            await fetch(`${API_BASE_URL}/users/me?token=${state.token}`, {
+                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ default_language: newLang }),
+            });
+        } catch (error) {
+            console.error("Failed to update language:", error);
+        }
     });
+
     messageInput.addEventListener('input', () => {
         messageInput.style.height = 'auto';
         messageInput.style.height = `${Math.min(160, messageInput.scrollHeight)}px`;
     });
 
-    // --- App Start ---
     window.onload = () => {
         const urlParams = new URLSearchParams(window.location.search);
         state.token = urlParams.get('token') || localStorage.getItem('lingua_link_token');
