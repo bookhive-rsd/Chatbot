@@ -4,38 +4,32 @@
     <meta charset="UTF-8" />
     <title>LinguaLink — Real-time Translated Chat</title>
     <meta name="viewport" content="width=device-width, initial-scale=1" />
-    <!-- Google Fonts -->
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-    <!-- Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     <style>
         html, body { height: 100%; font-family: 'Inter', sans-serif; }
-        .scroll-smooth { scroll-behavior: smooth; }
-        .glass {
-            background: rgba(255,255,255,0.08);
-            backdrop-filter: blur(8px);
-        }
-        .nice-scroll::-webkit-scrollbar{width:10px;height:10px}
+        .glass { background: rgba(255,255,255,0.08); backdrop-filter: blur(8px); }
+        .nice-scroll::-webkit-scrollbar{width:8px;}
         .nice-scroll::-webkit-scrollbar-track{background:transparent}
         .nice-scroll::-webkit-scrollbar-thumb{background:#ffffff22;border-radius:8px}
-        .nice-scroll:hover::-webkit-scrollbar-thumb{background:#ffffff3f}
-        .bubble:after {
-            content:""; position:absolute; bottom:-2px;
-            width:10px; height:10px; transform:rotate(45deg);
-        }
+        .bubble:after { content:""; position:absolute; bottom:-2px; width:10px; height:10px; transform:rotate(45deg); }
         .bubble.me:after { right:12px; background:#5b7cff; }
         .bubble.them:after { left:12px; background:#111827; }
-        .chip { transition: transform .15s ease; }
-        .chip:hover { transform: translateY(-1px); }
-        /* Hide the ugly file input */
-        input[type="file"] { display: none; }
+        .avatar-indicator {
+            position: absolute;
+            bottom: -2px;
+            right: -2px;
+            width: 12px;
+            height: 12px;
+            border-radius: 9999px;
+            border: 2px solid #1f2937; /* Matches aside background */
+        }
     </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-indigo-900 via-slate-900 to-black text-white antialiased">
 
-    <!-- App Shell: Initially hidden until auth status is known -->
     <div id="app-shell" class="hidden h-screen w-screen flex items-center justify-center p-4">
 
         <!-- Login Screen -->
@@ -45,12 +39,9 @@
                 <h1 class="text-3xl font-bold text-white mt-4">Welcome to LinguaLink</h1>
                 <p class="text-white/60 mt-2">Secure, Real-time, Translated Chat.</p>
                 <div class="mt-8">
-                    <!-- This is now a simple link to our backend sign-in route -->
                     <a href="/auth/google/signin"
                        class="inline-flex items-center justify-center gap-3 w-full max-w-xs mx-auto bg-white/90 text-slate-800 font-medium py-3 px-4 rounded-lg shadow-md hover:bg-white transition">
-                        <svg class="w-6 h-6" viewBox="0 0 48 48">
-                            <path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.3 5.5-6.1 9.5-11.3 9.5-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.2l5.8-5.8C34.4 6.6 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 20-9 20-20 0-1.1-.1-2.2-.4-3.5z"/>
-                        </svg>
+                        <svg class="w-6 h-6" viewBox="0 0 48 48"><path fill="#FFC107" d="M43.6 20.5H42V20H24v8h11.3c-1.3 5.5-6.1 9.5-11.3 9.5-6.6 0-12-5.4-12-12s5.4-12 12-12c3.1 0 5.8 1.2 7.9 3.2l5.8-5.8C34.4 6.6 29.6 4 24 4 12.9 4 4 12.9 4 24s8.9 20 20 20c11 0 20-9 20-20 0-1.1-.1-2.2-.4-3.5z"/></svg>
                         <span>Sign in with Google</span>
                     </a>
                 </div>
@@ -61,247 +52,173 @@
         <div id="chat-screen" class="hidden h-full w-full max-w-7xl">
             <div class="grid lg:grid-cols-[360px,1fr] gap-6 h-full">
                 <!-- Sidebar -->
-                <aside class="glass rounded-2xl border border-white/10 p-4 lg:p-5 flex flex-col">
+                <aside class="glass rounded-2xl border border-white/10 p-4 lg:p-5 flex flex-col bg-[#1f2937]/50">
                     <div class="flex items-center justify-between">
                         <div class="flex items-center gap-3">
-                            <img id="my-avatar" src="" class="h-10 w-10 rounded-xl object-cover bg-gradient-to-br from-indigo-400 to-fuchsia-500">
+                            <div class="relative">
+                                <img id="my-avatar" src="" class="h-10 w-10 rounded-xl object-cover bg-gradient-to-br from-indigo-400 to-fuchsia-500">
+                                <div class="avatar-indicator bg-green-500"></div>
+                            </div>
                             <div>
                                 <h1 id="my-name" class="text-lg font-semibold"></h1>
                                 <p class="text-xs text-white/60">Online</p>
                             </div>
                         </div>
-                        <button id="btnLogout" title="Logout" class="inline-flex items-center gap-2 rounded-xl bg-white/10 hover:bg-white/15 active:bg-white/20 transition p-2 text-sm">
-                           <svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg>
-                        </button>
+                        <button id="btnLogout" title="Logout" class="rounded-xl bg-white/10 hover:bg-white/15 p-2"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"/><polyline points="16 17 21 12 16 7"/><line x1="21" y1="12" x2="9" y2="12"/></svg></button>
                     </div>
-
-                    <!-- Search / New chat -->
-                    <div class="mt-4">
-                        <div class="relative">
-                            <input id="searchInput" type="text" placeholder="Search chats..."
-                                   class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-white/40">
-                            <svg class="absolute right-3 top-1/2 -translate-y-1/2 opacity-60" width="18" height="18" viewBox="0 0 24 24" fill="none">
-                                <circle cx="11" cy="11" r="7" stroke="white" stroke-opacity=".7" stroke-width="1.5"/>
-                                <path d="M20 20L17 17" stroke="white" stroke-opacity=".7" stroke-width="1.5" stroke-linecap="round"/>
-                            </svg>
-                        </div>
-                        <details class="mt-3">
-                            <summary class="cursor-pointer text-sm text-indigo-300 hover:text-indigo-200">+ Start new chat by email</summary>
-                            <form id="addContactForm" class="mt-2 space-y-2">
-                                <input id="contactEmail" type="email" placeholder="friend@email.com" required
-                                       class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-white/40">
-                                <button type="submit" class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition px-4 py-2.5 text-sm font-medium">
-                                    Find & Connect
-                                </button>
-                            </form>
-                        </details>
-                    </div>
-
-                    <!-- Chats list -->
-                    <div class="mt-4 flex-1 overflow-y-auto nice-scroll" id="chatList">
-                         <!-- Chat items will be dynamically inserted here -->
-                    </div>
+                    <div class="mt-4"><input id="searchInput" type="text" placeholder="Search chats..." class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"></div>
+                    <details class="mt-3"><summary class="cursor-pointer text-sm text-indigo-300 hover:text-indigo-200">+ Start new chat</summary><form id="addContactForm" class="mt-2 space-y-2"><input id="contactEmail" type="email" placeholder="friend@email.com" required class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"><button type="submit" class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-2.5 text-sm font-medium">Find & Connect</button></form></details>
+                    <div class="mt-4 flex-1 overflow-y-auto nice-scroll" id="chatList"></div>
                 </aside>
 
                 <!-- Main area -->
                 <section id="main-chat-area" class="glass rounded-2xl border border-white/10 flex flex-col h-full opacity-50 pointer-events-none">
-                    <!-- Header -->
-                    <div class="px-4 lg:px-6 py-4 border-b border-white/10 flex items-center justify-between">
-                        <div class="flex items-center gap-3 min-w-0">
-                            <div id="contact-avatar" class="h-10 w-10 rounded-xl bg-gray-700 grid place-items-center font-bold"></div>
-                            <div class="min-w-0">
-                                <h2 id="contact-name" class="font-semibold truncate">Select a chat</h2>
-                                <p id="contact-status" class="text-xs text-white/60">Offline</p>
-                            </div>
-                        </div>
-                        <div class="flex items-center gap-2">
-                            <label class="text-xs text-white/70">My language</label>
-                            <select id="langSelect" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
-                                <option value="en">English</option>
-                                <option value="hi">हिन्दी (Hindi)</option>
-                                <option value="es">Español</option>
-                                <option value="fr">Français</option>
-                                <option value="de">Deutsch</option>
-                            </select>
-                        </div>
-                    </div>
-
-                    <!-- Messages -->
-                    <div id="messages" class="flex-1 overflow-y-auto nice-scroll p-4 lg:p-6 space-y-3">
-                        <div class="text-white/50 text-center text-sm">Pick a chat from the left to get started.</div>
-                    </div>
-
-                    <!-- Composer -->
-                    <form id="composer" class="p-3 lg:p-4 border-t border-white/10">
-                        <div class="flex items-end gap-2">
-                            <div class="flex-1">
-                                <textarea id="messageInput" rows="1" placeholder="Type a message..."
-                                          class="w-full resize-none rounded-xl bg-white/5 border border-white/10 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-white/40"></textarea>
-                            </div>
-                            <div class="flex items-center gap-2">
-                                <button type="submit" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 px-4 py-3 font-medium">
-                                    Send
-                                </button>
-                            </div>
-                        </div>
-                    </form>
+                    <div class="px-4 lg:px-6 py-4 border-b border-white/10 flex items-center justify-between"><div class="flex items-center gap-3 min-w-0"><div id="contact-avatar-wrapper" class="relative"><div id="contact-avatar" class="h-10 w-10 rounded-xl bg-gray-700"></div><div id="contact-avatar-indicator" class="avatar-indicator bg-gray-500"></div></div><div class="min-w-0"><h2 id="contact-name" class="font-semibold truncate">Select a chat</h2><p id="contact-status" class="text-xs text-white/60">Offline</p></div></div><div class="flex items-center gap-2"><label class="text-xs text-white/70">My language</label><select id="langSelect" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50"><option value="en">English</option><option value="hi">हिन्दी (Hindi)</option><option value="es">Español</option><option value="fr">Français</option><option value="de">Deutsch</option></select></div></div>
+                    <div id="messages" class="flex-1 overflow-y-auto nice-scroll p-4 lg:p-6 space-y-3"><div class="text-white/50 text-center text-sm">Pick a chat from the left to get started.</div></div>
+                    <form id="composer" class="p-3 lg:p-4 border-t border-white/10"><div class="flex items-end gap-2"><textarea id="messageInput" rows="1" placeholder="Type a message..." class="flex-1 w-full resize-none rounded-xl bg-white/5 border border-white/10 px-4 py-3 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"></textarea><button type="submit" class="rounded-xl bg-indigo-600 hover:bg-indigo-500 px-4 py-3 font-medium">Send</button></div></form>
                 </section>
             </div>
         </div>
 
     </div>
     
-    <!-- Modals -->
-    <div id="modal" class="hidden fixed inset-0 z-[60] grid place-items-center p-4">
-        <div class="absolute inset-0 bg-black/60" id="modal-bg"></div>
-        <div class="relative w-full max-w-md glass rounded-2xl border border-white/10 p-5">
-            <div id="modalContent"></div>
-            <div class="mt-4 flex justify-end">
-                <button id="modalClose" class="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2">Close</button>
-            </div>
-        </div>
-    </div>
-
+    <div id="modal" class="hidden fixed inset-0 z-[60] grid place-items-center p-4"><div class="absolute inset-0 bg-black/60" id="modal-bg"></div><div class="relative w-full max-w-md glass rounded-2xl border border-white/10 p-5"><div id="modalContent"></div><div class="mt-4 flex justify-end"><button id="modalClose" class="rounded-xl bg-white/10 hover:bg-white/15 px-4 py-2">Close</button></div></div></div>
 
     <script>
-    // --- Configuration & State ---
     const API_BASE_URL = 'http://127.0.0.1:3000';
     const WS_BASE_URL = 'ws://127.0.0.1:3000';
 
-    let state = {
-        token: null,
-        currentUser: null,
-        chats: [],
-        activeChatId: null,
-        ws: null,
-    };
+    let state = { token: null, currentUser: null, chats: [], activeChatId: null, ws: null };
     
-    // --- DOM Elements ---
     const el = (q) => document.querySelector(q);
-    const appShell = el('#app-shell');
-    const loginScreen = el('#login-screen');
-    const chatScreen = el('#chat-screen');
-    const mainChatArea = el('#main-chat-area');
-    const chatList = el('#chatList');
-    const messagesContainer = el('#messages');
 
     // --- UTILS ---
-    const initials = (name) => (name || '').split(' ').map(p=>p[0]).slice(0,2).join('').toUpperCase();
     const formatTime = (isoString) => new Date(isoString).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
+    const formatLastSeen = (isoString) => {
+        if (!isoString) return 'Offline';
+        const now = new Date();
+        const lastSeen = new Date(isoString);
+        const diffSeconds = Math.round((now - lastSeen) / 1000);
+        const diffMinutes = Math.round(diffSeconds / 60);
+        const diffHours = Math.round(diffMinutes / 60);
+        const diffDays = Math.round(diffHours / 24);
+
+        if (diffSeconds < 60) return `last seen just now`;
+        if (diffMinutes < 60) return `last seen ${diffMinutes}m ago`;
+        if (diffHours < 24) return `last seen ${diffHours}h ago`;
+        if (diffDays === 1) return `last seen yesterday`;
+        return `last seen ${diffDays} days ago`;
+    };
 
     // --- MODAL ---
-    function showModal(html) {
-        el('#modalContent').innerHTML = html;
-        el('#modal').classList.remove('hidden');
-    }
-    function hideModal() {
-        el('#modal').classList.add('hidden');
-    }
+    function showModal(html) { el('#modalContent').innerHTML = html; el('#modal').classList.remove('hidden'); }
+    function hideModal() { el('#modal').classList.add('hidden'); }
 
-    // --- AUTHENTICATION ---
+    // --- AUTH ---
     function logout() {
         localStorage.removeItem('lingua_link_token');
-        state = { token: null, currentUser: null, chats: [], activeChatId: null, ws: null };
         if (state.ws) state.ws.close();
-        // Redirect to root to clear token from URL if present
         window.location.href = '/';
     }
 
     // --- CORE APP LOGIC ---
     async function initializeApp() {
-        if (!state.token) {
-            updateAuthUI();
-            return;
-        }
+        if (!state.token) { updateAuthUI(); return; }
         try {
             const res = await fetch(`${API_BASE_URL}/users/me?token=${state.token}`);
             if (res.status === 401) throw new Error('Session expired.');
-            if (!res.ok) throw new Error('Failed to fetch user profile.');
-
             state.currentUser = await res.json();
             
             await fetchChats();
+            connectWebSocket();
             updateAuthUI();
             renderAll();
-        } catch (error) {
-            console.error("Initialization failed:", error);
-            logout(); // If token is invalid or expired, log out.
-        }
+        } catch (error) { console.error("Initialization failed:", error); logout(); }
     }
 
     async function fetchChats() {
         const res = await fetch(`${API_BASE_URL}/chats?token=${state.token}`);
         state.chats = await res.json();
-        // Sort chats by the most recent message
-        state.chats.sort((a, b) => {
-            const lastMsgA = a.last_message_timestamp ? new Date(a.last_message_timestamp) : 0;
-            const lastMsgB = b.last_message_timestamp ? new Date(b.last_message_timestamp) : 0;
-            return lastMsgB - lastMsgA;
-        });
+        state.chats.sort((a, b) => new Date(b.last_message_timestamp || 0) - new Date(a.last_message_timestamp || 0));
     }
 
     async function selectChat(chatId) {
-        // FIX: Add a guard to prevent requests with an undefined or invalid chatId
-        if (!chatId || chatId === 'undefined') {
-            console.error("Attempted to select a chat with an invalid ID:", chatId);
-            showModal(`<h4 class="font-semibold text-lg mb-1">Error</h4><p class="text-sm text-white/80">Could not open the selected chat. Please refresh and try again.</p>`);
-            return;
-        }
-
+        if (!chatId || chatId === 'undefined') return;
         state.activeChatId = chatId;
         
-        mainChatArea.classList.remove('opacity-50', 'pointer-events-none');
-        messagesContainer.innerHTML = '<div class="text-white/50 text-center text-sm">Loading messages...</div>';
+        el('#main-chat-area').classList.remove('opacity-50', 'pointer-events-none');
+        el('#messages').innerHTML = '<div class="text-white/50 text-center text-sm">Loading messages...</div>';
         renderHeader();
         
-        // Fetch messages
         try {
             const res = await fetch(`${API_BASE_URL}/chats/${chatId}/messages?token=${state.token}`);
-            if (!res.ok) throw new Error('Failed to load messages.');
             const messages = await res.json();
             const chat = state.chats.find(c => c.id === chatId);
-            if(chat) chat.messages = messages;
-            
+            if (chat) chat.messages = messages;
             renderMessages();
-            connectWebSocket();
-
-        } catch (error) {
-            console.error(error);
-            messagesContainer.innerHTML = `<div class="text-rose-400 text-center text-sm">${error.message}</div>`;
-        }
-        renderChatList(); // To highlight the active chat
+        } catch (error) { console.error(error); }
+        renderChatList();
     }
     
     function connectWebSocket() {
         if (state.ws) state.ws.close();
-        if (!state.activeChatId) return;
+        if (!state.token) return;
 
-        state.ws = new WebSocket(`${WS_BASE_URL}/ws/${state.activeChatId}?token=${state.token}`);
-
-        state.ws.onopen = () => {
-            el('#contact-status').textContent = 'Online';
-        };
+        // The WebSocket connection is now general, not chat-specific
+        state.ws = new WebSocket(`${WS_BASE_URL}/ws?token=${state.token}`);
 
         state.ws.onmessage = (event) => {
             const message = JSON.parse(event.data);
-            const chat = state.chats.find(c => c.id === state.activeChatId);
-            if (chat) {
-                // Avoid adding duplicate messages if the sender gets their own broadcast back
-                if (!chat.messages.some(m => m._id === message._id)) {
-                    chat.messages.push(message);
-                    renderMessages();
-                }
-            }
-        };
-
-        state.ws.onclose = () => {
-             el('#contact-status').textContent = 'Offline';
+            handleWebSocketMessage(message);
         };
         
-        state.ws.onerror = (error) => {
-            console.error("WebSocket Error:", error);
-            el('#contact-status').textContent = 'Connection error';
-        };
+        state.ws.onclose = () => { setTimeout(connectWebSocket, 5000); }; // Reconnect after 5s
+        state.ws.onerror = (error) => { console.error("WebSocket Error:", error); state.ws.close(); };
+    }
+
+    function handleWebSocketMessage(msg) {
+        switch (msg.type) {
+            case 'new_message':
+                const chat = state.chats.find(c => c.id === msg.chat_id);
+                if (chat) {
+                    if (!chat.messages) chat.messages = [];
+                    if (!chat.messages.some(m => m.id === msg.id)) {
+                        chat.messages.push(msg);
+                    }
+                    if (chat.id === state.activeChatId) {
+                        renderMessages();
+                    }
+                }
+                break;
+
+            case 'translations_ready':
+                const chatForTranslation = state.chats.find(c => c.id === state.activeChatId);
+                if (chatForTranslation && chatForTranslation.messages) {
+                    const msgToUpdate = chatForTranslation.messages.find(m => m.id === msg.id);
+                    if (msgToUpdate) {
+                        msgToUpdate.translations = msg.translations;
+                        renderMessages();
+                    }
+                }
+                break;
+            
+            case 'presence_update':
+                state.chats.forEach(c => {
+                    const p = c.participants.find(p => p.id === msg.user_id);
+                    if (p) {
+                        p.is_online = msg.is_online;
+                        p.last_seen = msg.last_seen;
+                    }
+                });
+                renderChatList();
+                if (state.activeChatId) {
+                    const activeChat = state.chats.find(c => c.id === state.activeChatId);
+                    if (activeChat && activeChat.participants.some(p => p.id === msg.user_id)) {
+                        renderHeader();
+                    }
+                }
+                break;
+        }
     }
 
     // --- RENDERING ---
@@ -314,14 +231,10 @@
     }
     
     function updateAuthUI() {
-        if (state.token && state.currentUser) {
-            loginScreen.classList.add('hidden');
-            chatScreen.classList.remove('hidden');
-        } else {
-            chatScreen.classList.add('hidden');
-            loginScreen.classList.remove('hidden');
-        }
-        appShell.classList.remove('hidden');
+        const showChat = state.token && state.currentUser;
+        el('#chat-screen').classList.toggle('hidden', !showChat);
+        el('#login-screen').classList.toggle('hidden', showChat);
+        el('#app-shell').classList.remove('hidden');
     }
 
     function renderMyProfile() {
@@ -331,111 +244,115 @@
     }
 
     function renderChatList() {
-        chatList.innerHTML = '';
+        const list = el('#chatList');
         const query = el('#searchInput').value.trim().toLowerCase();
-        const filteredChats = state.chats.filter(c => {
-            const partner = c.participants.find(p => p && p.id !== state.currentUser.id);
+        
+        const filtered = state.chats.filter(c => {
+            const partner = c.participants.find(p => p.id !== state.currentUser.id);
             return !query || (partner && partner.name.toLowerCase().includes(query));
         });
 
-        if (filteredChats.length === 0) {
-            chatList.innerHTML = `<div class="text-center text-sm text-white/50 p-4">No chats found.</div>`;
+        if (filtered.length === 0) {
+            list.innerHTML = `<div class="text-center text-sm text-white/50 p-4">No chats found.</div>`;
             return;
         }
-
-        filteredChats.forEach(c => {
-            const partner = c.participants.find(p => p && p.id !== state.currentUser.id);
-            if (!partner) return;
+        
+        list.innerHTML = filtered.map(c => {
+            const partner = c.participants.find(p => p.id !== state.currentUser.id);
+            if (!partner) return '';
             
-            const lastMsgContent = c.last_message_content || 'No messages yet';
-            const lastMsgTime = c.last_message_timestamp ? formatTime(c.last_message_timestamp) : '';
+            const lastMsg = c.last_message_content || 'No messages yet';
+            const lastTime = c.last_message_timestamp ? formatTime(c.last_message_timestamp) : '';
+            const isActive = c.id === state.activeChatId;
 
-            const item = document.createElement('div');
-            item.className = 'rounded-xl p-3 hover:bg-white/5 cursor-pointer transition border border-transparent ' + (c.id === state.activeChatId ? 'bg-white/5 border-white/10' : '');
-            item.onclick = () => selectChat(c.id);
-            item.innerHTML = `
-                <div class="flex items-center gap-3">
-                    <img src="${partner.picture}" class="h-10 w-10 rounded-xl bg-gray-700 object-cover">
-                    <div class="min-w-0 flex-1">
-                        <div class="flex items-center justify-between gap-2">
-                            <p class="font-medium truncate">${partner.name}</p>
-                            <span class="text-[11px] text-white/50">${lastMsgTime}</span>
+            return `
+                <div class="rounded-xl p-3 hover:bg-white/5 cursor-pointer transition border ${isActive ? 'bg-white/5 border-white/10' : 'border-transparent'}" onclick="selectChat('${c.id}')">
+                    <div class="flex items-center gap-3">
+                        <div class="relative">
+                            <img src="${partner.picture}" class="h-10 w-10 rounded-xl bg-gray-700 object-cover">
+                            <div class="avatar-indicator ${partner.is_online ? 'bg-green-500' : 'bg-gray-500'}"></div>
                         </div>
-                        <p class="text-sm text-white/60 truncate">${lastMsgContent}</p>
+                        <div class="min-w-0 flex-1">
+                            <div class="flex items-center justify-between gap-2">
+                                <p class="font-medium truncate">${partner.name}</p>
+                                <span class="text-[11px] text-white/50">${lastTime}</span>
+                            </div>
+                            <p class="text-sm text-white/60 truncate">${lastMsg}</p>
+                        </div>
                     </div>
                 </div>
             `;
-            chatList.appendChild(item);
-        });
+        }).join('');
     }
     
     function renderHeader() {
         const chat = state.chats.find(c => c.id === state.activeChatId);
+        const nameEl = el('#contact-name');
+        const avatarEl = el('#contact-avatar');
+        const statusEl = el('#contact-status');
+        const indicatorEl = el('#contact-avatar-indicator');
+
         if (!chat) {
-            el('#contact-name').textContent = 'Select a chat';
-            el('#contact-avatar').innerHTML = '';
-            el('#contact-status').textContent = 'Offline';
+            nameEl.textContent = 'Select a chat';
+            avatarEl.innerHTML = '';
+            statusEl.textContent = 'Offline';
+            indicatorEl.className = 'avatar-indicator bg-gray-500';
             return;
         }
-        const partner = chat.participants.find(p => p && p.id !== state.currentUser.id);
+
+        const partner = chat.participants.find(p => p.id !== state.currentUser.id);
         if (partner) {
-            el('#contact-name').textContent = partner.name;
-            el('#contact-avatar').innerHTML = `<img src="${partner.picture}" class="h-10 w-10 rounded-xl object-cover">`;
+            nameEl.textContent = partner.name;
+            avatarEl.innerHTML = `<img src="${partner.picture}" class="h-10 w-10 rounded-xl object-cover">`;
+            statusEl.textContent = partner.is_online ? 'Online' : formatLastSeen(partner.last_seen);
+            indicatorEl.className = `avatar-indicator ${partner.is_online ? 'bg-green-500' : 'bg-gray-500'}`;
         }
     }
     
     function renderMessages() {
-        messagesContainer.innerHTML = '';
+        const container = el('#messages');
         const chat = state.chats.find(c => c.id === state.activeChatId);
         if (!chat || !chat.messages || chat.messages.length === 0) {
-            messagesContainer.innerHTML = '<div class="text-white/50 text-center text-sm">No messages yet. Send one to start the conversation!</div>';
+            container.innerHTML = '<div class="text-white/50 text-center text-sm">No messages yet.</div>';
             return;
         }
 
-        chat.messages.forEach(msg => {
+        container.innerHTML = chat.messages.map(msg => {
             const mine = msg.sender_id === state.currentUser.id;
             const myLang = state.currentUser.default_language || 'en';
+            
             const textContent = (msg.translations && msg.translations[myLang]) || msg.original_content;
-            const showOriginalToggle = myLang !== 'en' && msg.translations && msg.translations[myLang] && msg.original_content !== msg.translations[myLang];
+            const canShowOriginal = msg.translations && Object.keys(msg.translations).length > 0 && msg.translations[myLang] && msg.translations[myLang] !== msg.original_content;
             
-            const holder = document.createElement('div');
-            holder.className = mine ? 'flex justify-end' : 'flex';
-            
-            const bubble = document.createElement('div');
-            bubble.className = `relative max-w-[80%] rounded-2xl px-4 py-3 bubble ${mine ? 'ml-auto bg-indigo-500/90 me' : 'bg-gray-900 them'}`;
-            
-            const textEl = document.createElement('div');
-            textEl.className = 'text-[15px] leading-relaxed break-words';
-            textEl.textContent = textContent;
-            
-            const meta = document.createElement('div');
-            meta.className = 'flex items-center gap-2 mt-1 text-[11px] text-white/60';
-            meta.innerHTML = `<span>${formatTime(msg.created_at)}</span>`;
-            if (showOriginalToggle) {
-                const toggleBtn = document.createElement('button');
-                toggleBtn.className = "underline hover:text-white/80";
-                toggleBtn.textContent = 'Show original';
-                toggleBtn.onclick = () => {
-                    if (textEl.textContent === textContent) {
-                        textEl.textContent = msg.original_content;
-                        toggleBtn.textContent = 'Show translated';
-                    } else {
-                        textEl.textContent = textContent;
-                        toggleBtn.textContent = 'Show original';
-                    }
-                };
-                meta.appendChild(toggleBtn);
-            }
-
-            bubble.appendChild(textEl);
-            bubble.appendChild(meta);
-            holder.appendChild(bubble);
-            messagesContainer.appendChild(holder);
-        });
-
-        messagesContainer.scrollTop = messagesContainer.scrollHeight;
+            return `
+                <div class="flex ${mine ? 'justify-end' : ''}">
+                    <div class="relative max-w-[80%] rounded-2xl px-4 py-3 bubble ${mine ? 'ml-auto bg-indigo-500/90 me' : 'bg-gray-900 them'}">
+                        <div class="text-[15px] leading-relaxed break-words" data-msg-id="${msg.id}">${textContent}</div>
+                        <div class="flex items-center gap-2 mt-1 text-[11px] text-white/60">
+                            <span>${formatTime(msg.created_at)}</span>
+                            ${canShowOriginal ? `<button class="underline" onclick="toggleTranslation('${msg.id}', '${myLang}')">Show original</button>` : ''}
+                        </div>
+                    </div>
+                </div>
+            `;
+        }).join('');
+        container.scrollTop = container.scrollHeight;
     }
 
+    function toggleTranslation(msgId, myLang) {
+        const textEl = document.querySelector(`[data-msg-id="${msgId}"]`);
+        const btn = textEl.nextElementSibling.querySelector('button');
+        const chat = state.chats.find(c => c.id === state.activeChatId);
+        const msg = chat.messages.find(m => m.id === msgId);
+        
+        if (textEl.textContent === msg.original_content) {
+            textEl.textContent = msg.translations[myLang];
+            btn.textContent = 'Show original';
+        } else {
+            textEl.textContent = msg.original_content;
+            btn.textContent = 'Show translated';
+        }
+    }
 
     // --- EVENT LISTENERS ---
     el('#btnLogout').addEventListener('click', logout);
@@ -445,62 +362,40 @@
 
     el('#addContactForm').addEventListener('submit', async (e) => {
         e.preventDefault();
-        const emailInput = el('#contactEmail');
-        const email = emailInput.value.trim();
+        const email = el('#contactEmail').value.trim();
         if (!email) return;
-
         try {
             const res = await fetch(`${API_BASE_URL}/chats?participant_email=${email}&token=${state.token}`, { method: 'POST' });
-            if (!res.ok) {
-                const error = await res.json();
-                throw new Error(error.detail || 'Could not create chat.');
-            }
-            const newOrExistingChat = await res.json();
-            
-            emailInput.value = '';
-            emailInput.closest('details').removeAttribute('open');
-            
-            await fetchChats(); // Re-fetch all chats
-            selectChat(newOrExistingChat.id); // Open the new chat
-            
-        } catch(error) {
-            showModal(`<h4 class="font-semibold text-lg mb-1">Error</h4><p class="text-sm text-white/80">${error.message}</p>`);
-        }
+            if (!res.ok) throw new Error((await res.json()).detail);
+            const newChat = await res.json();
+            el('#contactEmail').value = '';
+            el('#addContactForm').closest('details').removeAttribute('open');
+            await fetchChats();
+            selectChat(newChat.id);
+        } catch(error) { showModal(`<p>${error.message}</p>`); }
     });
     
     el('#langSelect').addEventListener('change', async (e) => {
-        const newLang = e.target.value;
-        state.currentUser.default_language = newLang;
-        try {
-            await fetch(`${API_BASE_URL}/users/me?token=${state.token}`, {
-                method: 'PATCH',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ default_language: newLang }),
-            });
-            renderMessages(); // Re-render messages with new language preference
-        } catch (error) {
-            console.error("Failed to update language:", error);
-        }
+        state.currentUser.default_language = e.target.value;
+        await fetch(`${API_BASE_URL}/users/me?token=${state.token}`, {
+            method: 'PATCH', headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ default_language: e.target.value }),
+        });
+        renderMessages();
     });
 
-    const messageInput = el('#messageInput');
+    const msgInput = el('#messageInput');
     el('#composer').addEventListener('submit', (e) => {
         e.preventDefault();
-        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-        const content = messageInput.value.trim();
+        if (!state.ws || state.ws.readyState !== WebSocket.OPEN || !state.activeChatId) return;
+        const content = msgInput.value.trim();
         if (!content) return;
         
-        state.ws.send(JSON.stringify({ content }));
-        messageInput.value = '';
-        messageInput.style.height = 'auto'; // Reset textarea height
+        state.ws.send(JSON.stringify({ content, chat_id: state.activeChatId }));
+        msgInput.value = '';
+        msgInput.style.height = 'auto';
     });
-
-    // Auto-resize textarea
-    messageInput.addEventListener('input', () => {
-        messageInput.style.height = 'auto';
-        messageInput.style.height = Math.min(160, messageInput.scrollHeight) + 'px';
-    });
-
+    msgInput.addEventListener('input', () => { msgInput.style.height = 'auto'; msgInput.style.height = Math.min(160, msgInput.scrollHeight) + 'px'; });
 
     // --- INITIALIZATION ---
     window.onload = () => {
@@ -511,14 +406,13 @@
         if (tokenFromUrl) {
             state.token = tokenFromUrl;
             localStorage.setItem('lingua_link_token', tokenFromUrl);
-            // Clean the URL
             window.history.replaceState({}, document.title, "/");
         } else if (tokenFromStorage) {
             state.token = tokenFromStorage;
         }
         initializeApp();
     };
-
     </script>
 </body>
 </html>
+
