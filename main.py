@@ -3,27 +3,28 @@
 # This file contains the complete backend for LinguaLink, a real-time chat application
 # built with FastAPI, MongoDB, and integrated with the Gemini API for translation.
 #
-# Version 1.4.4 Features:
+# Version 1.5.0 Features:
+# - Multimedia Messaging: Support for sending images, audio, and documents.
+# - Secure File Uploads: Files are saved with unique, secure names.
+# - Static File Serving: Uploaded files are served securely to the frontend.
+# - Message Type Differentiation: Database now stores message type (text, image, audio, file).
+# - Translation logic now correctly ignores non-text messages.
 # - Added robust error handling for `InvalidToken` to prevent crashes from old data.
-# - Fixed `InvalidToken` decryption error by using a persistent encryption key.
-# - Fixed "Token used too early" error by adding clock skew tolerance to OAuth.
-# - Corrected JWT algorithm from HS26 to HS256.
-# - Real-time presence system (online/offline status and last seen timestamp).
-# - Instant message delivery with translations handled as a background task.
-# - WebSocket broadcasting for presence updates to relevant users.
 
 import os
 import json
 import asyncio
 import secrets
 import time
+import shutil
 from datetime import datetime
 from typing import List, Dict, Optional
 
 import uvicorn
-from fastapi import FastAPI, WebSocket, Depends, HTTPException, status, WebSocketDisconnect, Query, Request
+from fastapi import FastAPI, WebSocket, Depends, HTTPException, status, WebSocketDisconnect, Query, Request, UploadFile, File
 from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.middleware.cors import CORSMiddleware
+from starlette.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 from motor.motor_asyncio import AsyncIOMotorClient
 from bson import ObjectId
@@ -38,15 +39,9 @@ from pymongo import ASCENDING, DESCENDING
 
 # --- Configuration ---
 MONGO_DETAILS = os.environ.get("MONGO_DETAILS", "mongodb://localhost:27017")
-
-# IMPORTANT: This key must be persistent. For production, load it from an environment
-# variable. Using a fixed key here for development with auto-reloading.
-# You can generate a new one with:
-# python -c "from cryptography.fernet import Fernet; print(Fernet.generate_key().decode())"
 FIXED_DEV_ENCRYPTION_KEY = "v2qL4z-4x_gE8sB_nMcRfUjXn2r5u8xAzDCF-JaNdSg="
 ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", FIXED_DEV_ENCRYPTION_KEY)
 fernet = Fernet(ENCRYPTION_KEY.encode())
-
 GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "660588293356-insq0j2214him7fq448sskegc7frnmhf.apps.googleusercontent.com")
 GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "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")
 REDIRECT_URI = "http://127.0.0.1:3000/auth/google/callback"
@@ -62,8 +57,16 @@ oauth_states: Dict[str, float] = {}
 app = FastAPI(
     title="LinguaLink API",
     description="Backend for a WhatsApp-style chat application with real-time translation and presence.",
-    version="1.4.4"
+    version="1.5.0"
 )
+
+# Create uploads directory if it doesn't exist
+UPLOAD_DIR = "uploads"
+os.makedirs(UPLOAD_DIR, exist_ok=True)
+
+# Mount static files directory to serve uploaded files
+app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")
+
 
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
@@ -94,8 +97,11 @@ class Message(BaseModel):
     id: str = Field(..., alias="_id")
     chat_id: str
     sender_id: str
-    original_content: str
+    message_type: str = "text" # 'text', 'image', 'audio', 'file'
+    original_content: str # For text, the content; for files, the original filename
+    file_url: Optional[str] = None
     translations: Dict[str, str] = {}
+    reactions: Dict[str, List[str]] = Field(default_factory=dict)
     created_at: datetime
 
 class ChatParticipant(BaseModel):
@@ -110,6 +116,7 @@ class ChatDetail(BaseModel):
     participants: List[ChatParticipant]
     last_message_content: Optional[str] = None
     last_message_timestamp: Optional[datetime] = None
+    last_message_type: str = "text"
     created_at: datetime
 
 # --- WebSocket Connection Manager ---
@@ -156,7 +163,6 @@ def decrypt_message(encrypted_text: str) -> str:
     try:
         return fernet.decrypt(encrypted_text.encode()).decode()
     except (InvalidToken, TypeError):
-        # This can happen if the encryption key changes or the data is corrupt
         print(f"Warning: Could not decrypt a message. Returning placeholder text.")
         return "[Message could not be decrypted]"
 
@@ -203,7 +209,7 @@ async def update_and_broadcast_presence(user_id: str, is_online: bool):
 
 # --- Background Task for Translation ---
 async def process_translations(message_id: ObjectId, chat_id: str, sender: User, original_content: str):
-    """Fetches translations and updates the message, then broadcasts the result."""
+    """Fetches translations for TEXT messages and updates them."""
     chat = await chats_collection.find_one({"_id": ObjectId(chat_id)})
     if not chat: return
 
@@ -226,13 +232,35 @@ async def process_translations(message_id: ObjectId, chat_id: str, sender: User,
     broadcast_msg = json.dumps({
         "type": "translations_ready",
         "id": str(message_id),
-        "chat_id": chat_id, # Added for context on the client
+        "chat_id": chat_id,
         "translations": decrypted_translations
     })
     
     await manager.broadcast_to_users(chat["participants"], broadcast_msg)
 
 # --- API Endpoints ---
+@app.post("/uploads")
+async def upload_file(file: UploadFile = File(...), token: str = Query(...)):
+    # Authenticate user before allowing upload
+    try:
+        await get_current_user(token)
+    except HTTPException:
+        raise HTTPException(status_code=401, detail="Authentication required for uploads.")
+
+    # Generate a secure, unique filename
+    file_extension = os.path.splitext(file.filename)[1]
+    safe_filename = f"{secrets.token_hex(16)}{file_extension}"
+    file_path = os.path.join(UPLOAD_DIR, safe_filename)
+
+    # Save the file
+    try:
+        with open(file_path, "wb") as buffer:
+            shutil.copyfileobj(file.file, buffer)
+    finally:
+        file.file.close()
+
+    return {"file_url": f"/files/{safe_filename}"}
+
 @app.get("/", response_class=FileResponse)
 async def read_root(): return FileResponse("index.html")
 
@@ -268,15 +296,22 @@ async def get_user_chats(current_user: User = Depends(get_current_user)):
             {"chat_id": str(chat["_id"])}, sort=[("created_at", DESCENDING)]
         )
         
-        # Safely decrypt last message content
         last_message_content = None
-        if last_message and "original_content" in last_message:
-            last_message_content = decrypt_message(last_message["original_content"])
+        last_message_type = "text"
+        if last_message:
+            last_message_type = last_message.get("message_type", "text")
+            if last_message_type == "text":
+                last_message_content = decrypt_message(last_message["original_content"])
+            else:
+                # For files, the "content" is the filename
+                last_message_content = last_message["original_content"]
+
 
         detail = ChatDetail(
             _id=str(chat["_id"]), participants=p_list,
             last_message_content=last_message_content,
             last_message_timestamp=last_message["created_at"] if last_message else None,
+            last_message_type=last_message_type,
             created_at=chat["created_at"]
         )
         chat_details.append(detail)
@@ -318,33 +353,27 @@ async def create_chat(participant_email: str, current_user: User = Depends(get_c
 
 @app.get("/chats/{chat_id}/messages", response_model=List[Message], response_model_by_alias=False)
 async def get_chat_messages(chat_id: str, current_user: User = Depends(get_current_user)):
-    try:
-        chat_object_id = ObjectId(chat_id)
-    except InvalidId:
-        raise HTTPException(status_code=400, detail=f"Invalid chat ID.")
+    try: chat_object_id = ObjectId(chat_id)
+    except InvalidId: raise HTTPException(status_code=400, detail="Invalid chat ID.")
 
     chat = await chats_collection.find_one({"_id": chat_object_id, "participants": current_user.id})
-    if not chat:
-        raise HTTPException(status_code=404, detail="Chat not found.")
+    if not chat: raise HTTPException(status_code=404, detail="Chat not found.")
 
     messages_data = []
     messages_cursor = messages_collection.find({"chat_id": chat_id}).sort("created_at", ASCENDING)
     async for msg in messages_cursor:
         msg["_id"] = str(msg["_id"])
-        msg["original_content"]=decrypt_message(msg["original_content"])
-        msg["translations"]={lang: decrypt_message(text) for lang, text in msg.get("translations", {}).items()}
+        if msg.get("message_type", "text") == "text":
+            msg["original_content"]=decrypt_message(msg["original_content"])
+            msg["translations"]={lang: decrypt_message(text) for lang, text in msg.get("translations", {}).items()}
         messages_data.append(Message(**msg))
-            
     return messages_data
 
 # --- WebSocket Endpoint ---
 @app.websocket("/ws")
 async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
-    try:
-        current_user = await get_current_user(token)
-    except HTTPException:
-        await websocket.close(code=status.WS_1008_POLICY_VIOLATION)
-        return
+    try: current_user = await get_current_user(token)
+    except HTTPException: await websocket.close(code=status.WS_1008_POLICY_VIOLATION); return
 
     await manager.connect(websocket, current_user.id)
     await update_and_broadcast_presence(current_user.id, is_online=True)
@@ -353,42 +382,69 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
         while True:
             data = await websocket.receive_text()
             message_data = json.loads(data)
-            
+            msg_type = message_data.get("type")
             chat_id = message_data.get("chat_id")
-            content = message_data.get("content")
-            if not chat_id or not content: continue
-            
+
+            if not chat_id: continue
             chat = await chats_collection.find_one({"_id": ObjectId(chat_id), "participants": current_user.id})
             if not chat: continue
 
-            encrypted_content = encrypt_message(content)
-            new_message = {
-                "chat_id": chat_id, "sender_id": current_user.id, 
-                "original_content": encrypted_content, 
-                "translations": {}, "created_at": datetime.utcnow()
-            }
-            result = await messages_collection.insert_one(new_message)
-            message_id = result.inserted_id
+            if msg_type == "message":
+                # ... (existing message sending logic)
+                message_content_type = message_data.get("message_type", "text")
+                new_message = {"chat_id": chat_id, "sender_id": current_user.id, "message_type": message_content_type, "created_at": datetime.utcnow(), "translations": {}, "reactions": {}}
+                
+                content_to_broadcast = ""
+                if message_content_type == "text":
+                    content = message_data.get("content")
+                    if not content: continue
+                    new_message["original_content"] = encrypt_message(content)
+                    content_to_broadcast = content
+                else: # File-based messages
+                    file_url, original_filename = message_data.get("file_url"), message_data.get("original_content")
+                    if not file_url or not original_filename: continue
+                    new_message["file_url"], new_message["original_content"] = file_url, original_filename
+                    content_to_broadcast = original_filename
 
-            instant_broadcast_msg = json.dumps({
-                "type": "new_message",
-                "id": str(message_id),
-                "chat_id": chat_id, "sender_id": current_user.id,
-                "original_content": content,
-                "translations": {},
-                "created_at": new_message["created_at"].isoformat()
-            })
-            
-            await manager.broadcast_to_users(chat["participants"], instant_broadcast_msg)
+                result = await messages_collection.insert_one(new_message)
+                message_id = result.inserted_id
+                
+                instant_broadcast_msg = {"type": "new_message", "id": str(message_id), "chat_id": chat_id, "sender_id": current_user.id, "message_type": message_content_type, "original_content": content_to_broadcast, "file_url": new_message.get("file_url"), "translations": {}, "reactions": {}, "created_at": new_message["created_at"].isoformat()}
+                await manager.broadcast_to_users(chat["participants"], json.dumps(instant_broadcast_msg))
 
-            asyncio.create_task(process_translations(
-                message_id, chat_id, current_user, content
-            ))
+                if message_content_type == "text":
+                    asyncio.create_task(process_translations(message_id, chat_id, current_user, content_to_broadcast))
 
-    except WebSocketDisconnect:
-        pass
-    except Exception as e:
-        print(f"WebSocket error for user {current_user.id}: {e}")
+            elif msg_type == "reaction":
+                message_id_str = message_data.get("message_id")
+                emoji = message_data.get("emoji")
+                if not message_id_str or not emoji: continue
+                
+                message_id = ObjectId(message_id_str)
+                message = await messages_collection.find_one({"_id": message_id})
+                if not message: continue
+
+                reactions = message.get("reactions", {})
+                user_id = current_user.id
+                
+                if emoji not in reactions: reactions[emoji] = []
+                
+                # Toggle reaction
+                if user_id in reactions[emoji]: reactions[emoji].remove(user_id)
+                else: reactions[emoji].append(user_id)
+                
+                if not reactions[emoji]: del reactions[emoji] # Clean up empty reaction list
+
+                await messages_collection.update_one({"_id": message_id}, {"$set": {"reactions": reactions}})
+
+                reaction_update_msg = json.dumps({
+                    "type": "reaction_update", "chat_id": chat_id, "message_id": message_id_str,
+                    "reactions": reactions
+                })
+                await manager.broadcast_to_users(chat["participants"], reaction_update_msg)
+
+    except WebSocketDisconnect: pass
+    except Exception as e: print(f"WebSocket error for user {current_user.id}: {e}")
     finally:
         manager.disconnect(current_user.id)
         await update_and_broadcast_presence(current_user.id, is_online=False)
@@ -444,4 +500,3 @@ async def auth_google_callback(request: Request):
 
 if __name__ == "__main__":
     uvicorn.run("main:app", host="0.0.0.0", port=3000, reload=True)
-
