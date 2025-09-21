@@ -3,7 +3,8 @@
 # This file contains the complete backend for LinguaLink, a real-time chat application
 # built with FastAPI, MongoDB, and integrated with the Gemini API for translation.
 #
-# Version 1.5.1 Features:
+# Version 1.5.2 Features:
+# - UI Enhancement: User profile pictures are now included in WebSocket message broadcasts.
 # - Enhanced translation to handle transliterated messages (e.g., Telugu in English script).
 # - Multimedia Messaging: Support for sending images, audio, and documents.
 # - Secure File Uploads: Files are saved with unique, secure names.
@@ -58,7 +59,7 @@ oauth_states: Dict[str, float] = {}
 app = FastAPI(
     title="LinguaLink API",
     description="Backend for a WhatsApp-style chat application with real-time translation and presence.",
-    version="1.5.1"
+    version="1.5.2"
 )
 
 # Create uploads directory if it doesn't exist
@@ -152,7 +153,7 @@ async def get_current_user(token: str = Query(...)):
         if not email: raise credentials_exception
     except JWTError:
         raise credentials_exception
-
+    
     user = await users_collection.find_one({"email": email})
     if user is None: raise credentials_exception
     user['_id'] = str(user['_id'])
@@ -170,7 +171,7 @@ def decrypt_message(encrypted_text: str) -> str:
 async def translate_text_gemini(text: str, target_language: str) -> str:
     if not GEMINI_API_KEY or not text: return text
     headers = {"Content-Type": "application/json"}
-    prompt = f"Identify the language of the following text, which might be in English letters but represent another language (like Hinglish or Tanglish). Then, translate it to {target_language}. Provide only the final translation. Text: '{text}'"
+    prompt = f"Identify the language of the following text. The text may be a transliteration of a language like Hindi or Telugu into English characters (e.g., 'em chesthunavu'). Then, translate the identified text to {target_language}. Provide only the final, translated text, without any extra explanation or preamble. Here is the text: '{text}'"
     payload = {"contents": [{"parts": [{"text": prompt}]}]}
     async with httpx.AsyncClient() as client:
         try:
@@ -188,16 +189,16 @@ async def update_and_broadcast_presence(user_id: str, is_online: bool):
     update_data = {"is_online": is_online}
     if not is_online:
         update_data["last_seen"] = datetime.utcnow()
-
+    
     await users_collection.update_one({"_id": ObjectId(user_id)}, {"$set": update_data})
-
+    
     user_chats_cursor = chats_collection.find({"participants": user_id})
     contact_ids = set()
     async for chat in user_chats_cursor:
         for p_id in chat['participants']:
             if p_id != user_id:
                 contact_ids.add(p_id)
-
+    
     last_seen_value = update_data.get("last_seen")
 
     presence_message = json.dumps({
@@ -216,7 +217,7 @@ async def process_translations(message_id: ObjectId, chat_id: str, sender: User,
 
     other_participant_ids = [ObjectId(p_id) for p_id in chat["participants"] if p_id != sender.id]
     p_cursor = users_collection.find({"_id": {"$in": other_participant_ids}})
-
+    
     translations = {}
     translations[sender.default_language] = encrypt_message(original_content)
 
@@ -227,16 +228,16 @@ async def process_translations(message_id: ObjectId, chat_id: str, sender: User,
             translations[lang] = encrypt_message(translated_text)
 
     await messages_collection.update_one({"_id": message_id}, {"$set": {"translations": translations}})
-
+    
     decrypted_translations = {lang: decrypt_message(text) for lang, text in translations.items()}
-
+    
     broadcast_msg = json.dumps({
         "type": "translations_ready",
         "id": str(message_id),
         "chat_id": chat_id,
         "translations": decrypted_translations
     })
-
+    
     await manager.broadcast_to_users(chat["participants"], broadcast_msg)
 
 # --- API Endpoints ---
@@ -272,7 +273,7 @@ async def read_users_me(current_user: User = Depends(get_current_user)): return 
 async def update_user_me(user_update: UserUpdate, current_user: User = Depends(get_current_user)):
     update_data = user_update.model_dump(exclude_unset=True)
     if not update_data: return current_user
-
+    
     updated_user = await users_collection.find_one_and_update(
         {"_id": ObjectId(current_user.id)}, {"$set": update_data}, return_document=True
     )
@@ -292,11 +293,11 @@ async def get_user_chats(current_user: User = Depends(get_current_user)):
                 is_online=p.get("is_online", False), last_seen=p.get("last_seen")
             ) async for p in p_cursor
         ]
-
+        
         last_message = await messages_collection.find_one(
             {"chat_id": str(chat["_id"])}, sort=[("created_at", DESCENDING)]
         )
-
+        
         last_message_content = None
         last_message_type = "text"
         if last_message:
@@ -326,9 +327,9 @@ async def create_chat(participant_email: str, current_user: User = Depends(get_c
     participant = await users_collection.find_one({"email": participant_email})
     if not participant:
         raise HTTPException(status_code=404, detail="User with that email not found.")
-
+    
     participant_id_str = str(participant['_id'])
-
+    
     existing_chat = await chats_collection.find_one(
         {"participants": {"$all": [current_user.id, participant_id_str], "$size": 2}}
     )
@@ -349,7 +350,7 @@ async def create_chat(participant_email: str, current_user: User = Depends(get_c
             is_online=p.get("is_online", False), last_seen=p.get("last_seen")
         ) async for p in p_cursor
     ]
-
+    
     return ChatDetail(_id=chat_id_str, participants=p_list, created_at=chat_doc["created_at"])
 
 @app.get("/chats/{chat_id}/messages", response_model=List[Message], response_model_by_alias=False)
@@ -394,7 +395,7 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                 # ... (existing message sending logic)
                 message_content_type = message_data.get("message_type", "text")
                 new_message = {"chat_id": chat_id, "sender_id": current_user.id, "message_type": message_content_type, "created_at": datetime.utcnow(), "translations": {}, "reactions": {}}
-
+                
                 content_to_broadcast = ""
                 if message_content_type == "text":
                     content = message_data.get("content")
@@ -409,8 +410,20 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
 
                 result = await messages_collection.insert_one(new_message)
                 message_id = result.inserted_id
-
-                instant_broadcast_msg = {"type": "new_message", "id": str(message_id), "chat_id": chat_id, "sender_id": current_user.id, "message_type": message_content_type, "original_content": content_to_broadcast, "file_url": new_message.get("file_url"), "translations": {}, "reactions": {}, "created_at": new_message["created_at"].isoformat()}
+                
+                instant_broadcast_msg = {
+                    "type": "new_message", 
+                    "id": str(message_id), 
+                    "chat_id": chat_id, 
+                    "sender_id": current_user.id,
+                    "sender_picture": current_user.picture, # <-- MODIFIED: Added sender picture
+                    "message_type": message_content_type, 
+                    "original_content": content_to_broadcast, 
+                    "file_url": new_message.get("file_url"), 
+                    "translations": {}, 
+                    "reactions": {}, 
+                    "created_at": new_message["created_at"].isoformat()
+                }
                 await manager.broadcast_to_users(chat["participants"], json.dumps(instant_broadcast_msg))
 
                 if message_content_type == "text":
@@ -420,20 +433,20 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                 message_id_str = message_data.get("message_id")
                 emoji = message_data.get("emoji")
                 if not message_id_str or not emoji: continue
-
+                
                 message_id = ObjectId(message_id_str)
                 message = await messages_collection.find_one({"_id": message_id})
                 if not message: continue
 
                 reactions = message.get("reactions", {})
                 user_id = current_user.id
-
+                
                 if emoji not in reactions: reactions[emoji] = []
-
+                
                 # Toggle reaction
                 if user_id in reactions[emoji]: reactions[emoji].remove(user_id)
                 else: reactions[emoji].append(user_id)
-
+                
                 if not reactions[emoji]: del reactions[emoji] # Clean up empty reaction list
 
                 await messages_collection.update_one({"_id": message_id}, {"$set": {"reactions": reactions}})
@@ -474,28 +487,28 @@ async def auth_google_callback(request: Request):
     )
     flow.fetch_token(authorization_response=str(request.url))
     credentials = flow.credentials
-
+    
     try:
         id_info = id_token.verify_oauth2_token(
-            credentials.id_token,
-            google_requests.Request(),
+            credentials.id_token, 
+            google_requests.Request(), 
             GOOGLE_CLIENT_ID,
             clock_skew_in_seconds=15
         )
     except ValueError as e:
         raise HTTPException(status_code=401, detail=f"Token verification failed: {e}")
 
-
+    
     email = id_info['email']
     user = await users_collection.find_one({"email": email})
     if not user:
         new_user_data = {
-            "google_id": id_info['sub'], "email": email, "name": id_info.get("name"),
-            "picture": id_info.get("picture"), "default_language": "en",
+            "google_id": id_info['sub'], "email": email, "name": id_info.get("name"), 
+            "picture": id_info.get("picture"), "default_language": "en", 
             "created_at": datetime.utcnow(), "is_online": False
         }
         await users_collection.insert_one(new_user_data)
-
+    
     access_token = create_access_token(data={"sub": email})
     return RedirectResponse(url=f"/?token={access_token}")
 
