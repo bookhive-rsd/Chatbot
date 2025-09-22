@@ -3,14 +3,12 @@
 # This file contains the complete backend for LinguaLink, a real-time chat application
 # built with FastAPI, MongoDB, and integrated with the Gemini API for translation.
 #
-# Version 1.5.3 Features:
-# - Dynamic Translation: Messages are now translated on-the-fly if a translation for the user's current language is missing.
-# - UI Enhancement: User profile pictures are now included in WebSocket message broadcasts.
-# - Enhanced translation to handle transliterated messages (e.g., Telugu in English script).
-# - Multimedia Messaging: Support for sending images, audio, and documents.
-# - Secure File Uploads: Files are saved with unique, secure names.
-# - Static File Serving: Uploaded files are served securely to the frontend.
-# - Added robust error handling for `InvalidToken` to prevent crashes from old data.
+# Version 1.6.0 Changes:
+# - SECURITY: Removed hardcoded secrets and API keys. App will now fail on startup if environment variables are not set.
+# - SECURITY: Added server-side validation for file uploads to only allow specific content types.
+# - PERFORMANCE: Added essential database indexes on users, chats, and messages collections for faster queries.
+# - FEATURE: Implemented real-time "user is typing..." indicators via WebSocket.
+# - WSS Support: Base code now ready for production deployment with WSS via a reverse proxy.
 
 import os
 import json
@@ -35,22 +33,39 @@ from cryptography.fernet import Fernet, InvalidToken
 from google.oauth2 import id_token
 from google.auth.transport import requests as google_requests
 from google_auth_oauthlib.flow import Flow
-import httpx
-from pymongo import ASCENDING, DESCENDING
+from pymongo import ASCENDING, DESCENDING, IndexModel, TEXT
+from dotenv import load_dotenv
+
+load_dotenv() 
 
 # --- Configuration ---
-MONGO_DETAILS = os.environ.get("MONGO_DETAILS", "mongodb://localhost:27017")
-FIXED_DEV_ENCRYPTION_KEY = "v2qL4z-4x_gE8sB_nMcRfUjXn2r5u8xAzDCF-JaNdSg="
-ENCRYPTION_KEY = os.environ.get("ENCRYPTION_KEY", FIXED_DEV_ENCRYPTION_KEY)
+# CRITICAL: All secrets are now loaded from environment variables.
+# The application will not start if these are not set.
+# Use a .env file for local development.
+try:
+    MONGO_DETAILS = os.environ["MONGO_DETAILS"]
+    ENCRYPTION_KEY = os.environ["ENCRYPTION_KEY"]
+    GOOGLE_CLIENT_ID = os.environ["GOOGLE_CLIENT_ID"]
+    GOOGLE_CLIENT_SECRET = os.environ["GOOGLE_CLIENT_SECRET"]
+    GEMINI_API_KEY = os.environ["GEMINI_API_KEY"]
+    JWT_SECRET_KEY = os.environ["JWT_SECRET_KEY"]
+    # It's recommended to set this to your production URL
+    REDIRECT_URI = os.environ.get("REDIRECT_URI", "http://127.0.0.1:3000/auth/google/callback") 
+except KeyError as e:
+    raise RuntimeError(f"FATAL: Environment variable {e} is not set. Application cannot start.") from e
+
 fernet = Fernet(ENCRYPTION_KEY.encode())
-GOOGLE_CLIENT_ID = os.environ.get("GOOGLE_CLIENT_ID", "660588293356-insq0j2214him7fq448sskegc7frnmhf.apps.googleusercontent.com")
-GOOGLE_CLIENT_SECRET = os.environ.get("GOOGLE_CLIENT_SECRET", "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")
-REDIRECT_URI = "http://127.0.0.1:3000/auth/google/callback"
-os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1'
-GEMINI_API_KEY = os.environ.get("GEMINI_API_KEY", "AIzaSyBcnPIGkKdkSpoJaPv3W3mw3uV7c9pH2QI")
+os.environ['OAUTHLIB_INSECURE_TRANSPORT'] = '1' # OK for local dev, but for production use HTTPS
 GEMINI_API_URL = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.0-flash:generateContent?key={GEMINI_API_KEY}"
-JWT_SECRET_KEY = os.environ.get("JWT_SECRET_KEY", "a_very_secret_key_for_jwt_tokens")
 ALGORITHM = "HS256"
+ALLOWED_UPLOAD_CONTENT_TYPES = [
+    "image/jpeg", "image/png", "image/gif", "image/webp",
+    "audio/mpeg", "audio/ogg", "audio/wav",
+    "application/pdf", "text/plain",
+    "application/msword", "application/vnd.openxmlformats-officedocument.wordprocessingml.document", # .doc, .docx
+    "application/vnd.ms-excel", "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet", # .xls, .xlsx
+    "application/vnd.ms-powerpoint", "application/vnd.openxmlformats-officedocument.presentationml.presentation" # .ppt, .pptx
+]
 
 oauth_states: Dict[str, float] = {}
 
@@ -58,7 +73,7 @@ oauth_states: Dict[str, float] = {}
 app = FastAPI(
     title="LinguaLink API",
     description="Backend for a WhatsApp-style chat application with real-time translation and presence.",
-    version="1.5.3"
+    version="1.6.0"
 )
 
 # Create uploads directory if it doesn't exist
@@ -67,7 +82,6 @@ os.makedirs(UPLOAD_DIR, exist_ok=True)
 
 # Mount static files directory to serve uploaded files
 app.mount("/files", StaticFiles(directory=UPLOAD_DIR), name="files")
-
 
 app.add_middleware(
     CORSMiddleware, allow_origins=["*"], allow_credentials=True, allow_methods=["*"], allow_headers=["*"],
@@ -79,6 +93,18 @@ db = client.lingualink_db
 users_collection = db.get_collection("users")
 chats_collection = db.get_collection("chats")
 messages_collection = db.get_collection("messages")
+
+# --- Database Indexing (PERFORMANCE) ---
+@app.on_event("startup")
+async def create_db_indexes():
+    """Create necessary database indexes on startup for performance."""
+    await users_collection.create_indexes([IndexModel([("email", ASCENDING)], unique=True)])
+    await chats_collection.create_indexes([IndexModel([("participants", ASCENDING)])])
+    await messages_collection.create_indexes([
+        IndexModel([("chat_id", ASCENDING), ("created_at", DESCENDING)]),
+        IndexModel([("original_content", TEXT)]) # For future message content search
+    ])
+    print("Database indexes have been created/verified.")
 
 # --- Pydantic Models ---
 class User(BaseModel):
@@ -240,20 +266,18 @@ async def process_translations(message_id: ObjectId, chat_id: str, sender: User,
     await manager.broadcast_to_users(chat["participants"], broadcast_msg)
 
 # --- API Endpoints ---
+# SECURITY: Added content type validation for file uploads
 @app.post("/uploads")
 async def upload_file(file: UploadFile = File(...), token: str = Query(...)):
-    # Authenticate user before allowing upload
-    try:
-        await get_current_user(token)
-    except HTTPException:
-        raise HTTPException(status_code=401, detail="Authentication required for uploads.")
+    await get_current_user(token)
 
-    # Generate a secure, unique filename
+    if file.content_type not in ALLOWED_UPLOAD_CONTENT_TYPES:
+        raise HTTPException(status_code=400, detail=f"File type '{file.content_type}' not allowed.")
+
     file_extension = os.path.splitext(file.filename)[1]
     safe_filename = f"{secrets.token_hex(16)}{file_extension}"
     file_path = os.path.join(UPLOAD_DIR, safe_filename)
 
-    # Save the file
     try:
         with open(file_path, "wb") as buffer:
             shutil.copyfileobj(file.file, buffer)
@@ -306,7 +330,6 @@ async def get_user_chats(current_user: User = Depends(get_current_user)):
             else:
                 last_message_content = last_message["original_content"]
 
-
         detail = ChatDetail(
             _id=str(chat["_id"]), participants=p_list,
             last_message_content=last_message_content,
@@ -331,7 +354,6 @@ async def create_chat(participant_email: str, current_user: User = Depends(get_c
     existing_chat = await chats_collection.find_one(
         {"participants": {"$all": [current_user.id, participant_id_str], "$size": 2}}
     )
-
     if existing_chat:
         chat_id_str = str(existing_chat['_id'])
     else:
@@ -342,16 +364,9 @@ async def create_chat(participant_email: str, current_user: User = Depends(get_c
     chat_doc = await chats_collection.find_one({"_id": ObjectId(chat_id_str)})
     p_ids = [ObjectId(p_id) for p_id in chat_doc["participants"]]
     p_cursor = users_collection.find({"_id": {"$in": p_ids}})
-    p_list = [
-        ChatParticipant(
-            id=str(p["_id"]), name=p["name"], picture=p.get("picture"),
-            is_online=p.get("is_online", False), last_seen=p.get("last_seen")
-        ) async for p in p_cursor
-    ]
-    
+    p_list = [ ChatParticipant(id=str(p["_id"]), name=p["name"], picture=p.get("picture"), is_online=p.get("is_online", False), last_seen=p.get("last_seen")) async for p in p_cursor ]
     return ChatDetail(_id=chat_id_str, participants=p_list, created_at=chat_doc["created_at"])
 
-# MODIFIED: This function now generates missing translations on-the-fly.
 @app.get("/chats/{chat_id}/messages", response_model=List[Message], response_model_by_alias=False)
 async def get_chat_messages(chat_id: str, current_user: User = Depends(get_current_user)):
     try: chat_object_id = ObjectId(chat_id)
@@ -368,23 +383,14 @@ async def get_chat_messages(chat_id: str, current_user: User = Depends(get_curre
     async for msg in messages_cursor:
         if msg.get("message_type", "text") == "text":
             decrypted_original = decrypt_message(msg["original_content"])
-            msg["original_content"] = decrypted_original # Send decrypted original content
-            
-            # Decrypt existing translations
+            msg["original_content"] = decrypted_original
             decrypted_translations = {lang: decrypt_message(text) for lang, text in msg.get("translations", {}).items()}
             
-            # Check if translation for the current user's language is missing
             if user_lang not in decrypted_translations:
-                # Generate new translation
                 translated_text = await translate_text_gemini(decrypted_original, user_lang)
                 if translated_text != decrypted_original:
-                    # Save the new translation to the database
                     encrypted_new_translation = encrypt_message(translated_text)
-                    await messages_collection.update_one(
-                        {"_id": msg["_id"]},
-                        {"$set": {f"translations.{user_lang}": encrypted_new_translation}}
-                    )
-                    # Add to the response object
+                    await messages_collection.update_one( {"_id": msg["_id"]}, {"$set": {f"translations.{user_lang}": encrypted_new_translation}})
                     decrypted_translations[user_lang] = translated_text
             
             msg["translations"] = decrypted_translations
@@ -413,6 +419,8 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
             if not chat_id: continue
             chat = await chats_collection.find_one({"_id": ObjectId(chat_id), "participants": current_user.id})
             if not chat: continue
+            
+            other_participants = [p for p in chat["participants"] if p != current_user.id]
 
             if msg_type == "message":
                 message_content_type = message_data.get("message_type", "text")
@@ -472,6 +480,17 @@ async def websocket_endpoint(websocket: WebSocket, token: str = Query(...)):
                 })
                 await manager.broadcast_to_users(chat["participants"], reaction_update_msg)
 
+            # FEATURE: Handle typing indicators
+            elif msg_type == "typing":
+                typing_status_msg = json.dumps({
+                    "type": "typing_status",
+                    "chat_id": chat_id,
+                    "user_id": current_user.id,
+                    "user_name": current_user.name,
+                    "is_typing": message_data.get("is_typing", False)
+                })
+                await manager.broadcast_to_users(other_participants, typing_status_msg)
+
     except WebSocketDisconnect: pass
     except Exception as e: print(f"WebSocket error for user {current_user.id}: {e}")
     finally:
@@ -505,15 +524,11 @@ async def auth_google_callback(request: Request):
     
     try:
         id_info = id_token.verify_oauth2_token(
-            credentials.id_token, 
-            google_requests.Request(), 
-            GOOGLE_CLIENT_ID,
-            clock_skew_in_seconds=15
+            credentials.id_token, google_requests.Request(), GOOGLE_CLIENT_ID, clock_skew_in_seconds=15
         )
     except ValueError as e:
         raise HTTPException(status_code=401, detail=f"Token verification failed: {e}")
 
-    
     email = id_info['email']
     user = await users_collection.find_one({"email": email})
     if not user:
@@ -528,4 +543,6 @@ async def auth_google_callback(request: Request):
     return RedirectResponse(url=f"/?token={access_token}")
 
 if __name__ == "__main__":
+    print("--- LINGUALINK SERVER STARTING ---")
+    print("Reminder: Ensure all required environment variables are set.")
     uvicorn.run("main:app", host="0.0.0.0", port=3000, reload=True)

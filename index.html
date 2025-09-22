@@ -17,22 +17,11 @@
         .nice-scroll::-webkit-scrollbar-thumb{background:#ffffff22;border-radius:8px}
         .nice-scroll:hover::-webkit-scrollbar-thumb{background:#ffffff3f}
         
-        .bubble {
-            position: relative;
-            padding: 0.75rem 1rem;
-            border-radius: 1.25rem;
-            max-width: 100%; 
-        }
+        .bubble { position: relative; padding: 0.75rem 1rem; border-radius: 1.25rem; max-width: 100%; }
         .bubble:after { content:""; position:absolute; bottom:-2px; width:10px; height:10px; transform:rotate(45deg); }
         
-        .bubble.me {
-            background:#5b7cff;
-            border-bottom-right-radius: 0.25rem;
-        }
-        .bubble.them {
-            background:#111827; 
-            border-bottom-left-radius: 0.25rem;
-        }
+        .bubble.me { background:#5b7cff; border-bottom-right-radius: 0.25rem; }
+        .bubble.them { background:#111827;  border-bottom-left-radius: 0.25rem; }
         .bubble.me:after { right:12px; background:#5b7cff; }
         .bubble.them:after { left:12px; background:#111827; }
 
@@ -60,6 +49,18 @@
         .reaction-chip { display: flex; items-center: center; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 99px; font-size: 0.75rem; cursor: pointer; }
         .reaction-chip.reacted-by-me { background: #5b7cff; border: 1px solid rgba(255,255,255,0.5); }
         .reaction-chip span { margin-left: 4px; font-weight: 500; }
+
+        /* Typing indicator animation */
+        .typing-indicator span {
+            display: inline-block;
+            width: 6px; height: 6px;
+            border-radius: 50%;
+            background-color: #93c5fd;
+            animation: typing-wave 1.4s infinite ease-in-out both;
+        }
+        .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
+        .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
+        @keyframes typing-wave { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1.0); } }
     </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-indigo-900 via-slate-900 to-black text-white antialiased">
@@ -107,21 +108,7 @@
                         <div class="flex items-center gap-2">
                             <label class="text-xs text-white/70">My language</label>
                             <select id="langSelect" class="rounded-lg bg-white/5 border border-white/10 px-3 py-1.5 text-sm focus:outline-none focus:ring-2 focus:ring-indigo-500/50">
-                                <option value="en">English</option>
-                                <option value="hi">Hindi</option>
-                                <option value="te">Telugu</option>
-                                <option value="es">Spanish</option>
-                                <option value="fr">French</option>
-                                <option value="de">German</option>
-                                <option value="zh">Chinese</option>
-                                <option value="ja">Japanese</option>
-                                <option value="ko">Korean</option>
-                                <option value="pt">Portuguese</option>
-                                <option value="ru">Russian</option>
-                                <option value="ar">Arabic</option>
-                                <option value="bn">Bengali</option>
-                                <option value="ta">Tamil</option>
-                                <option value="mr">Marathi</option>
+                                <option value="en">English</option><option value="hi">Hindi</option><option value="te">Telugu</option><option value="es">Spanish</option><option value="fr">French</option><option value="de">German</option><option value="zh">Chinese</option><option value="ja">Japanese</option><option value="ko">Korean</option><option value="pt">Portuguese</option><option value="ru">Russian</option><option value="ar">Arabic</option><option value="bn">Bengali</option><option value="ta">Tamil</option><option value="mr">Marathi</option>
                             </select>
                         </div>
                     </div>
@@ -156,9 +143,11 @@
     </div>
 
     <script>
+    // SECURITY: Use wss:// for secure connections in production
     const API_BASE_URL = window.location.origin;
-    const WS_BASE_URL = window.location.origin.replace(/^http/, 'ws');
-    let state = { token: null, currentUser: null, chats: [], activeChatId: null, ws: null };
+    const WS_BASE_URL = window.location.protocol === 'https:' ? 'wss://' + window.location.host : 'ws://' + window.location.host;
+    
+    let state = { token: null, currentUser: null, chats: [], activeChatId: null, ws: null, typingTimers: {} };
     
     const el = q => document.querySelector(q);
     const messagesContainer = el('#messages'), messageInput = el('#messageInput'), 
@@ -208,6 +197,7 @@
                 case 'translations_ready': handleTranslationsReady(data); break;
                 case 'presence_update': handlePresenceUpdate(data); break;
                 case 'reaction_update': handleReactionUpdate(data); break;
+                case 'typing_status': handleTypingStatus(data); break;
             }
         };
         state.ws.onerror = err => console.error("WS Error:", err);
@@ -245,6 +235,22 @@
             if (data.chat_id === state.activeChatId) updateMessageDOM(msg);
         }
     }
+    function handleTypingStatus(data) {
+        if (data.chat_id !== state.activeChatId) return;
+
+        const contactStatusEl = el('#contact-status');
+        if (state.typingTimers[data.chat_id]) clearTimeout(state.typingTimers[data.chat_id]);
+
+        if (data.is_typing) {
+            contactStatusEl.innerHTML = `<div class="flex items-center gap-1 text-blue-300">typing<div class="typing-indicator"><span></span><span></span><span></span></div></div>`;
+            state.typingTimers[data.chat_id] = setTimeout(() => {
+                renderHeader(); // Re-render header to show original status
+            }, 3000); // Reset after 3 seconds of inactivity
+        } else {
+            renderHeader(); // Re-render immediately if is_typing is false
+        }
+    }
+
     function findMessage(chatId, messageId) {
         const chat = state.chats.find(c => c.id === chatId);
         return chat ? chat.messages.find(m => m.id === messageId) : null;
@@ -261,8 +267,6 @@
         await reloadMessagesForActiveChat();
         renderChatList();
     }
-
-    // MODIFIED: Created a new function to reload messages for the active chat
     async function reloadMessagesForActiveChat() {
         if (!state.activeChatId) return;
         try {
@@ -315,7 +319,7 @@
         el('#contact-name').textContent = p ? p.name : 'Select a chat';
         el('#contact-avatar-wrapper').innerHTML = p ? `<img src="${p.picture}" class="h-10 w-10 rounded-xl object-cover">` : '';
         el('#contact-status-dot').className = `absolute -bottom-0.5 -right-0.5 h-3 w-3 ${p && p.is_online ? 'bg-green-500' : 'bg-gray-500'} rounded-full border-2 border-slate-800`;
-        el('#contact-status').textContent = p ? (p.is_online ? 'Online' : formatLastSeen(p.last_seen)) : 'Offline';
+        el('#contact-status').innerHTML = p ? (p.is_online ? 'Online' : formatLastSeen(p.last_seen)) : 'Offline';
     }
     function renderMessages() {
         messagesContainer.innerHTML = '';
@@ -332,30 +336,10 @@
         const chat = state.chats.find(c => c.id === state.activeChatId);
         const sender = chat ? chat.participants.find(p => p.id === msg.sender_id) : { name: 'User', picture: '' };
         const senderPicture = msg.sender_picture || sender.picture; 
-
         const li = document.createElement('li');
         li.id = `msg-${msg.id}`;
         li.className = `message-container flex items-start gap-3 max-w-[85%] ${mine ? 'flex-row-reverse ml-auto' : 'mr-auto'}`;
-
-        li.innerHTML = `
-            <img src="${senderPicture}" alt="${sender.name}" class="h-8 w-8 rounded-full object-cover mt-1 flex-shrink-0">
-            <div class="flex-1 relative">
-                <div class="message-wrapper ${mine ? 'mine' : 'theirs'}">
-                    <div class="bubble ${mine ? 'me' : 'them'}">
-                        ${!mine ? `<div class="font-bold text-sm mb-1 text-indigo-300">${sender.name}</div>` : ''}
-                        ${renderMessageContent(msg)}
-                        ${renderMessageMeta(msg)}
-                    </div>
-                    <div class="reactions-display"></div>
-                </div>
-                <button class="reaction-button p-1 rounded-full bg-slate-700 hover:bg-slate-600">
-                     <svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg>
-                </button>
-                <div class="reaction-picker hidden">
-                    ${['👍', '❤️', '😂', '😯', '😢', '🙏'].map(emoji => `<span>${emoji}</span>`).join('')}
-                </div>
-            </div>
-        `;
+        li.innerHTML = `<img src="${senderPicture}" alt="${sender.name}" class="h-8 w-8 rounded-full object-cover mt-1 flex-shrink-0"><div class="flex-1 relative"><div class="message-wrapper ${mine ? 'mine' : 'theirs'}"><div class="bubble ${mine ? 'me' : 'them'}">${!mine ? `<div class="font-bold text-sm mb-1 text-indigo-300">${sender.name}</div>` : ''}${renderMessageContent(msg)}${renderMessageMeta(msg)}</div><div class="reactions-display"></div></div><button class="reaction-button p-1 rounded-full bg-slate-700 hover:bg-slate-600"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg></button><div class="reaction-picker hidden">${['👍', '❤️', '😂', '😯', '😢', '🙏'].map(emoji => `<span>${emoji}</span>`).join('')}</div></div>`;
         li.querySelector('.reactions-display').innerHTML = renderReactions(msg);
         return li;
     }
@@ -382,18 +366,13 @@
     function renderMessageMeta(msg) {
         const myLang = state.currentUser.default_language || 'en';
         const hasTranslation = msg.translations && msg.translations[myLang] && Object.keys(msg.translations).length > 1;
-        return `<div class="flex items-center gap-2 mt-1 text-[11px] text-white/60">
-            <span>${formatTime(msg.created_at)}</span>
-            ${msg.message_type === 'text' && hasTranslation ? `<button class="underline toggle-translation">Show original</button>` : ''}
-        </div>`;
+        return `<div class="flex items-center gap-2 mt-1 text-[11px] text-white/60"><span>${formatTime(msg.created_at)}</span>${msg.message_type === 'text' && hasTranslation ? `<button class="underline toggle-translation">Show original</button>` : ''}</div>`;
     }
     function renderReactions(msg) {
         if (!msg.reactions || Object.keys(msg.reactions).length === 0) return '';
         return Object.entries(msg.reactions).map(([emoji, userIds]) => {
             const reactedByMe = userIds.includes(state.currentUser.id);
-            return `<div class="reaction-chip ${reactedByMe ? 'reacted-by-me' : ''}" data-emoji="${emoji}">
-                ${emoji} <span>${userIds.length}</span>
-            </div>`;
+            return `<div class="reaction-chip ${reactedByMe ? 'reacted-by-me' : ''}" data-emoji="${emoji}">${emoji} <span>${userIds.length}</span></div>`;
         }).join('');
     }
 
@@ -410,59 +389,42 @@
         if (e.target.closest('.reaction-button')) {
             msgContainer.querySelector('.reaction-picker').classList.toggle('hidden');
         } else if (e.target.closest('.reaction-picker span')) {
-            const emoji = e.target.textContent;
-            sendReaction(msgId, emoji);
-            msgContainer.querySelector('.reaction-picker').classList.add('hidden');
+            const emoji = e.target.textContent; sendReaction(msgId, emoji); msgContainer.querySelector('.reaction-picker').classList.add('hidden');
         } else if (e.target.closest('.reaction-chip')) {
-            const emoji = e.target.closest('.reaction-chip').dataset.emoji;
-            sendReaction(msgId, emoji);
+            const emoji = e.target.closest('.reaction-chip').dataset.emoji; sendReaction(msgId, emoji);
         } else if (e.target.closest('.toggle-translation')) {
-            const msg = findMessage(state.activeChatId, msgId);
-            if (!msg) return;
-            const textEl = msgContainer.querySelector('.bubble > div:first-child > div');
+            const msg = findMessage(state.activeChatId, msgId); if (!msg) return;
+            const textEl = msgContainer.querySelector('.bubble > div:first-child');
             const myLang = state.currentUser.default_language || 'en';
-            const translatedText = msg.translations[myLang];
-            const originalText = msg.original_content;
-            
+            const translatedText = msg.translations[myLang]; const originalText = msg.original_content;
             if (textEl.textContent === translatedText) {
-                textEl.textContent = originalText;
-                e.target.textContent = 'Show translated';
+                textEl.textContent = originalText; e.target.textContent = 'Show translated';
             } else {
-                textEl.textContent = translatedText;
-                e.target.textContent = 'Show original';
+                textEl.textContent = translatedText; e.target.textContent = 'Show original';
             }
         }
     });
     function sendReaction(message_id, emoji) {
         if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-        state.ws.send(JSON.stringify({
-            type: 'reaction', chat_id: state.activeChatId, message_id, emoji
-        }));
+        state.ws.send(JSON.stringify({ type: 'reaction', chat_id: state.activeChatId, message_id, emoji }));
     }
 
     el('#composer').addEventListener('submit', e => {
-        e.preventDefault();
-        const content = messageInput.value.trim();
-        if (!content) return;
-        state.ws.send(JSON.stringify({
-            type: 'message', chat_id: state.activeChatId, message_type: 'text', content
-        }));
+        e.preventDefault(); const content = messageInput.value.trim(); if (!content) return;
+        state.ws.send(JSON.stringify({ type: 'message', chat_id: state.activeChatId, message_type: 'text', content }));
         messageInput.value = ''; messageInput.style.height = 'auto'; emojiPicker.classList.add('hidden');
+        sendTyping(false); // Stop typing indicator on send
     });
     fileInput.addEventListener('change', async e => {
-        const file = e.target.files[0];
-        if (!file || !state.activeChatId) return;
+        const file = e.target.files[0]; if (!file || !state.activeChatId) return;
         el('#upload-progress').classList.remove('hidden');
         const formData = new FormData(); formData.append('file', file);
         try {
             const res = await fetch(`${API_BASE_URL}/uploads?token=${state.token}`, { method: 'POST', body: formData });
-            if (!res.ok) throw new Error('Upload failed.');
+            if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Upload failed'); }
             const { file_url } = await res.json();
             let message_type = file.type.startsWith('image/') ? 'image' : (file.type.startsWith('audio/') ? 'audio' : 'file');
-            state.ws.send(JSON.stringify({
-                type: 'message', chat_id: state.activeChatId, message_type,
-                file_url, original_content: file.name
-            }));
+            state.ws.send(JSON.stringify({ type: 'message', chat_id: state.activeChatId, message_type, file_url, original_content: file.name }));
         } catch (error) { showModal(`<h4>Upload Error</h4><p>${error.message}</p>`); } 
         finally { el('#upload-progress').classList.add('hidden'); fileInput.value = ''; }
     });
@@ -473,8 +435,7 @@
     el('#emojiBtn').addEventListener('click', () => emojiPicker.classList.toggle('hidden'));
     emojiPicker.addEventListener('emoji-click', e => { messageInput.value += e.detail.unicode; });
     el('#addContactForm').addEventListener('submit', async e => {
-        e.preventDefault();
-        const email = el('#contactEmail').value.trim(); if (!email) return;
+        e.preventDefault(); const email = el('#contactEmail').value.trim(); if (!email) return;
         try {
             const res = await fetch(`${API_BASE_URL}/chats?participant_email=${email}&token=${state.token}`, { method: 'POST' });
             if (!res.ok) { const err = await res.json(); throw new Error(err.detail); }
@@ -484,31 +445,29 @@
         } catch(error) { showModal(`<h4>Error</h4><p>${error.message}</p>`); }
     });
     
-    // MODIFIED: This listener now re-fetches messages to get new translations.
     el('#langSelect').addEventListener('change', async e => {
-        const newLang = e.target.value;
-        if (state.currentUser.default_language === newLang) return;
+        const newLang = e.target.value; if (state.currentUser.default_language === newLang) return;
         state.currentUser.default_language = newLang;
-        
-        // Re-fetch messages if a chat is active to get new translations
-        if(state.activeChatId) {
-            await reloadMessagesForActiveChat();
-        }
-
-        // Update the backend
+        if(state.activeChatId) await reloadMessagesForActiveChat();
         try {
             await fetch(`${API_BASE_URL}/users/me?token=${state.token}`, {
                 method: 'PATCH', headers: { 'Content-Type': 'application/json' },
                 body: JSON.stringify({ default_language: newLang }),
             });
-        } catch (error) {
-            console.error("Failed to update language:", error);
-        }
+        } catch (error) { console.error("Failed to update language:", error); }
     });
 
+    let typingTimeout = null;
+    function sendTyping(isTyping) {
+        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
+        state.ws.send(JSON.stringify({ type: 'typing', chat_id: state.activeChatId, is_typing: isTyping }));
+    }
     messageInput.addEventListener('input', () => {
         messageInput.style.height = 'auto';
         messageInput.style.height = `${Math.min(160, messageInput.scrollHeight)}px`;
+        clearTimeout(typingTimeout);
+        sendTyping(true);
+        typingTimeout = setTimeout(() => sendTyping(false), 2000); // User is considered "stopped" after 2s
     });
 
     window.onload = () => {
