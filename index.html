@@ -19,7 +19,6 @@
         
         .bubble { position: relative; padding: 0.75rem 1rem; border-radius: 1.25rem; max-width: 100%; }
         .bubble:after { content:""; position:absolute; bottom:-2px; width:10px; height:10px; transform:rotate(45deg); }
-        
         .bubble.me { background:#5b7cff; border-bottom-right-radius: 0.25rem; }
         .bubble.them { background:#111827;  border-bottom-left-radius: 0.25rem; }
         .bubble.me:after { right:12px; background:#5b7cff; }
@@ -27,12 +26,10 @@
 
         input[type="file"] { display: none; }
         emoji-picker { position: absolute; bottom: 100%; left: 0; margin-bottom: 8px; z-index: 50; }
-        
         .message-wrapper { position: relative; display: flex; flex-direction: column; }
         .message-wrapper.mine { align-items: flex-end; }
         .message-wrapper.theirs { align-items: flex-start; }
         .reaction-button { position: absolute; top: 50%; transform: translateY(-50%); z-index: 10; opacity: 0; transition: opacity 0.2s; }
-        
         .message-wrapper:hover .reaction-button { opacity: 1; }
         .mine .reaction-button { right: -1.8rem; }
         .theirs .reaction-button { left: -1.8rem; }
@@ -42,25 +39,20 @@
         .theirs .reaction-picker { left: 0; }
         .reaction-picker span { cursor: pointer; font-size: 1.25rem; transition: transform 0.1s; }
         .reaction-picker span:hover { transform: scale(1.2); }
-        
         .reactions-display { display: flex; gap: 4px; margin-top: 6px; }
         .mine .reactions-display { justify-content: flex-end; }
         .theirs .reactions-display { justify-content: flex-start; }
-        .reaction-chip { display: flex; items-center: center; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 99px; font-size: 0.75rem; cursor: pointer; }
+        .reaction-chip { display: flex; align-items: center; background: rgba(255,255,255,0.1); padding: 2px 6px; border-radius: 99px; font-size: 0.75rem; cursor: pointer; }
         .reaction-chip.reacted-by-me { background: #5b7cff; border: 1px solid rgba(255,255,255,0.5); }
         .reaction-chip span { margin-left: 4px; font-weight: 500; }
 
-        /* Typing indicator animation */
-        .typing-indicator span {
-            display: inline-block;
-            width: 6px; height: 6px;
-            border-radius: 50%;
-            background-color: #93c5fd;
-            animation: typing-wave 1.4s infinite ease-in-out both;
-        }
+        .typing-indicator span { display: inline-block; width: 6px; height: 6px; border-radius: 50%; background-color: #93c5fd; animation: typing-wave 1.4s infinite ease-in-out both; }
         .typing-indicator span:nth-child(2) { animation-delay: 0.2s; }
         .typing-indicator span:nth-child(3) { animation-delay: 0.4s; }
         @keyframes typing-wave { 0%, 80%, 100% { transform: scale(0); } 40% { transform: scale(1.0); } }
+
+        .status-ticks { color: #ffffff99; font-weight: 600; }
+        .status-ticks.read { color: #60a5fa; }
     </style>
 </head>
 <body class="min-h-screen bg-gradient-to-br from-indigo-900 via-slate-900 to-black text-white antialiased">
@@ -90,15 +82,12 @@
                         </div>
                         <button id="btnLogout" title="Logout" class="inline-flex items-center gap-2 rounded-xl bg-white/10 hover:bg-white/15 active:bg-white/20 transition p-2 text-sm"><svg xmlns="http://www.w3.org/2000/svg" width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h4"></path><polyline points="16 17 21 12 16 7"></polyline><line x1="21" y1="12" x2="9" y2="12"></line></svg></button>
                     </div>
-
                     <div class="mt-4">
                         <div class="relative"><input id="searchInput" type="text" placeholder="Search chats..." class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-white/40"><svg class="absolute right-3 top-1/2 -translate-y-1/2 opacity-60" width="18" height="18" viewBox="0 0 24 24" fill="none"><circle cx="11" cy="11" r="7" stroke="white" stroke-opacity=".7" stroke-width="1.5"/><path d="M20 20L17 17" stroke="white" stroke-opacity=".7" stroke-width="1.5" stroke-linecap="round"/></svg></div>
                         <details class="mt-3"><summary class="cursor-pointer text-sm text-indigo-300 hover:text-indigo-200">+ Start new chat by email</summary><form id="addContactForm" class="mt-2 space-y-2"><input id="contactEmail" type="email" placeholder="friend@email.com" required class="w-full rounded-xl bg-white/5 border border-white/10 px-4 py-2.5 focus:outline-none focus:ring-2 focus:ring-indigo-500/50 placeholder-white/40"><button type="submit" class="w-full rounded-xl bg-indigo-600 hover:bg-indigo-500 active:bg-indigo-700 transition px-4 py-2.5 text-sm font-medium">Find & Connect</button></form></details>
                     </div>
-
                     <div class="mt-4 flex-1 overflow-y-auto nice-scroll" id="chatList"></div>
                 </aside>
-
                 <section id="main-chat-area" class="glass rounded-2xl border border-white/10 flex flex-col overflow-hidden opacity-50 pointer-events-none">
                     <div class="px-4 lg:px-6 py-4 border-b border-white/10 flex items-center justify-between">
                         <div class="flex items-center gap-3 min-w-0">
@@ -112,9 +101,7 @@
                             </select>
                         </div>
                     </div>
-
                     <ul id="messages" class="flex-1 overflow-y-auto nice-scroll p-4 lg:p-6 space-y-4 min-h-0"></ul>
-
                     <form id="composer" class="p-3 lg:p-4 border-t border-white/10">
                         <div class="flex items-end gap-2">
                             <div class="flex items-center gap-1">
@@ -133,7 +120,6 @@
             </div>
         </div>
     </div>
-    
     <div id="modal" class="hidden fixed inset-0 z-[60] grid place-items-center p-4">
         <div class="absolute inset-0 bg-black/60" id="modal-bg"></div>
         <div class="relative w-full max-w-md glass rounded-2xl border border-white/10 p-5">
@@ -143,16 +129,12 @@
     </div>
 
     <script>
-    // SECURITY: Use wss:// for secure connections in production
     const API_BASE_URL = window.location.origin;
     const WS_BASE_URL = window.location.protocol === 'https:' ? 'wss://' + window.location.host : 'ws://' + window.location.host;
-    
     let state = { token: null, currentUser: null, chats: [], activeChatId: null, ws: null, typingTimers: {} };
     
     const el = q => document.querySelector(q);
-    const messagesContainer = el('#messages'), messageInput = el('#messageInput'), 
-          emojiPicker = el('emoji-picker'), fileInput = el('#fileInput');
-
+    const messagesContainer = el('#messages'), messageInput = el('#messageInput'), emojiPicker = el('emoji-picker'), fileInput = el('#fileInput');
     const formatTime = iso => new Date(iso).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit'});
     function formatLastSeen(iso) {
         if (!iso) return 'Offline';
@@ -165,21 +147,21 @@
 
     function showModal(html) { el('#modalContent').innerHTML = html; el('#modal').classList.remove('hidden'); }
     function hideModal() { el('#modal').classList.add('hidden'); }
-
     function logout() { localStorage.removeItem('lingua_link_token'); window.location.href = '/'; }
+
     async function initializeApp() {
         if (!state.token) { updateAuthUI(); return; }
         try {
             const res = await fetch(`${API_BASE_URL}/users/me?token=${state.token}`);
             if (res.status === 401) throw new Error('Session expired.');
             state.currentUser = await res.json();
-            
             await fetchChats();
             connectWebSocket();
             updateAuthUI();
             renderAll();
         } catch (error) { console.error("Init failed:", error); logout(); }
     }
+
     async function fetchChats() {
         const res = await fetch(`${API_BASE_URL}/chats?token=${state.token}`);
         state.chats = await res.json();
@@ -198,10 +180,13 @@
                 case 'presence_update': handlePresenceUpdate(data); break;
                 case 'reaction_update': handleReactionUpdate(data); break;
                 case 'typing_status': handleTypingStatus(data); break;
+                case 'message_delivered': handleMessageStatusUpdate(data.id, 'delivered'); break;
+                case 'messages_read': handleMessagesRead(data.chat_id); break;
             }
         };
         state.ws.onerror = err => console.error("WS Error:", err);
     }
+
     function handleNewMessage(msg) {
         const chat = state.chats.find(c => c.id === msg.chat_id);
         if (!chat) return;
@@ -209,78 +194,80 @@
         chat.last_message_timestamp = msg.created_at;
         chat.last_message_type = msg.message_type;
         if (!chat.messages.some(m => m.id === msg.id)) chat.messages.push(msg);
-        if (chat.id === state.activeChatId) renderMessages();
+        if (msg.sender_id !== state.currentUser.id) chat.unread_count = (chat.unread_count || 0) + 1;
+        if (chat.id === state.activeChatId) { renderMessages(); markMessagesAsRead(chat.id); }
         state.chats.sort((a, b) => new Date(b.last_message_timestamp || 0) - new Date(a.last_message_timestamp || 0));
         renderChatList();
     }
     function handleTranslationsReady(data) {
         const msg = findMessage(data.chat_id, data.id);
-        if (msg) {
-            msg.translations = data.translations;
-            if (data.chat_id === state.activeChatId) updateMessageDOM(msg);
-        }
+        if (msg) { msg.translations = data.translations; if (data.chat_id === state.activeChatId) updateMessageDOM(msg); }
     }
     function handlePresenceUpdate(data) {
-        state.chats.forEach(chat => {
-            const p = chat.participants.find(p => p.id === data.user_id);
-            if (p) { p.is_online = data.is_online; p.last_seen = data.last_seen; }
-        });
+        state.chats.forEach(chat => { const p = chat.participants.find(p => p.id === data.user_id); if (p) { p.is_online = data.is_online; p.last_seen = data.last_seen; } });
         renderChatList();
         if (state.activeChatId && state.chats.find(c => c.id === state.activeChatId).participants.some(p => p.id === data.user_id)) renderHeader();
     }
     function handleReactionUpdate(data) {
         const msg = findMessage(data.chat_id, data.message_id);
-        if (msg) {
-            msg.reactions = data.reactions;
-            if (data.chat_id === state.activeChatId) updateMessageDOM(msg);
-        }
+        if (msg) { msg.reactions = data.reactions; if (data.chat_id === state.activeChatId) updateMessageDOM(msg); }
     }
     function handleTypingStatus(data) {
         if (data.chat_id !== state.activeChatId) return;
-
         const contactStatusEl = el('#contact-status');
         if (state.typingTimers[data.chat_id]) clearTimeout(state.typingTimers[data.chat_id]);
-
         if (data.is_typing) {
             contactStatusEl.innerHTML = `<div class="flex items-center gap-1 text-blue-300">typing<div class="typing-indicator"><span></span><span></span><span></span></div></div>`;
-            state.typingTimers[data.chat_id] = setTimeout(() => {
-                renderHeader(); // Re-render header to show original status
-            }, 3000); // Reset after 3 seconds of inactivity
-        } else {
-            renderHeader(); // Re-render immediately if is_typing is false
-        }
+            state.typingTimers[data.chat_id] = setTimeout(() => { renderHeader(); }, 3000);
+        } else { renderHeader(); }
+    }
+    function handleMessageStatusUpdate(messageId, status) {
+        const chat = state.chats.find(c => c.messages.some(m => m.id === messageId));
+        if (!chat) return;
+        const msg = findMessage(chat.id, messageId);
+        if (msg && (status !== 'sent')) msg.status = status;
+        if (chat.id === state.activeChatId) updateMessageDOM(msg);
+    }
+    function handleMessagesRead(chatId) {
+        const chat = state.chats.find(c => c.id === chatId);
+        if (!chat) return;
+        chat.messages.forEach(msg => { if (msg.sender_id === state.currentUser.id) msg.status = 'read'; });
+        if (chat.id === state.activeChatId) renderMessages();
     }
 
     function findMessage(chatId, messageId) {
         const chat = state.chats.find(c => c.id === chatId);
         return chat ? chat.messages.find(m => m.id === messageId) : null;
     }
+    
+    async function markMessagesAsRead(chatId) {
+        const chat = state.chats.find(c => c.id === chatId);
+        if (chat && chat.unread_count > 0) {
+            chat.unread_count = 0;
+            renderChatList();
+            await fetch(`${API_BASE_URL}/chats/${chatId}/read?token=${state.token}`, { method: 'POST' });
+        }
+    }
 
     async function selectChat(chatId) {
         if (!chatId) return;
         state.activeChatId = chatId;
-        
         el('#main-chat-area').classList.remove('opacity-50', 'pointer-events-none');
         messagesContainer.innerHTML = '<div class="text-white/50 text-center text-sm">Loading...</div>';
         renderHeader();
-        
         await reloadMessagesForActiveChat();
+        markMessagesAsRead(chatId);
         renderChatList();
     }
+
     async function reloadMessagesForActiveChat() {
         if (!state.activeChatId) return;
         try {
             const res = await fetch(`${API_BASE_URL}/chats/${state.activeChatId}/messages?token=${state.token}`);
             if (!res.ok) throw new Error('Failed to reload messages.');
             const chat = state.chats.find(c => c.id === state.activeChatId);
-            if(chat) {
-                chat.messages = await res.json();
-                renderMessages();
-            }
-        } catch (error) { 
-            console.error(error);
-            messagesContainer.innerHTML = `<div class="text-rose-400 text-center text-sm">${error.message}</div>`;
-        }
+            if(chat) { chat.messages = await res.json(); renderMessages(); }
+        } catch (error) { messagesContainer.innerHTML = `<div class="text-rose-400 text-center text-sm">${error.message}</div>`; }
     }
 
     function renderAll() { if (state.currentUser) { renderMyProfile(); renderChatList(); renderHeader(); } }
@@ -291,25 +278,18 @@
         el('#app-shell').classList.remove('hidden');
     }
     function renderMyProfile() {
-        el('#my-name').textContent = state.currentUser.name;
-        el('#my-avatar').src = state.currentUser.picture || '';
-        el('#langSelect').value = state.currentUser.default_language || 'en';
+        el('#my-name').textContent = state.currentUser.name; el('#my-avatar').src = state.currentUser.picture || ''; el('#langSelect').value = state.currentUser.default_language || 'en';
     }
     function renderChatList() {
-        const listEl = el('#chatList');
-        listEl.innerHTML = '';
+        const listEl = el('#chatList'); listEl.innerHTML = '';
         const query = el('#searchInput').value.trim().toLowerCase();
-        state.chats.filter(c => {
-            const p = c.participants.find(p => p.id !== state.currentUser.id);
-            return !query || (p && p.name.toLowerCase().includes(query));
-        }).forEach(c => {
-            const p = c.participants.find(p => p.id !== state.currentUser.id);
-            if (!p) return;
+        state.chats.filter(c => { const p = c.participants.find(p => p.id !== state.currentUser.id); return !query || (p && p.name.toLowerCase().includes(query)); }).forEach(c => {
+            const p = c.participants.find(p => p.id !== state.currentUser.id); if (!p) return;
             let content = c.last_message_type === 'text' ? (c.last_message_content || '') : `[${c.last_message_type}]`;
             const item = document.createElement('div');
             item.className = `rounded-xl p-3 hover:bg-white/5 cursor-pointer transition border border-transparent ${c.id === state.activeChatId ? 'bg-white/5 border-white/10' : ''}`;
             item.onclick = () => selectChat(c.id);
-            item.innerHTML = `<div class="flex items-center gap-3"><div class="relative"><img src="${p.picture}" class="h-10 w-10 rounded-xl bg-gray-700 object-cover"><div class="absolute -bottom-0.5 -right-0.5 h-3 w-3 ${p.is_online ? 'bg-green-500' : 'bg-gray-500'} rounded-full border-2 border-slate-800"></div></div><div class="min-w-0 flex-1"><div class="flex items-center justify-between gap-2"><p class="font-medium truncate">${p.name}</p><span class="text-[11px] text-white/50">${c.last_message_timestamp ? formatTime(c.last_message_timestamp) : ''}</span></div><p class="text-sm text-white/60 truncate">${content}</p></div></div>`;
+            item.innerHTML = `<div class="flex items-center gap-3"><div class="relative"><img src="${p.picture}" class="h-10 w-10 rounded-xl bg-gray-700 object-cover"><div class="absolute -bottom-0.5 -right-0.5 h-3 w-3 ${p.is_online ? 'bg-green-500' : 'bg-gray-500'} rounded-full border-2 border-slate-800"></div></div><div class="min-w-0 flex-1"><div class="flex items-center justify-between gap-2"><p class="font-medium truncate">${p.name}</p><span class="text-[11px] text-white/50">${c.last_message_timestamp ? formatTime(c.last_message_timestamp) : ''}</span></div><div class="flex items-center justify-between"><p class="text-sm text-white/60 truncate">${content}</p>${c.unread_count > 0 ? `<span class="bg-indigo-500 text-white text-[10px] font-bold rounded-full h-5 w-5 flex items-center justify-center">${c.unread_count}</span>` : ''}</div></div></div>`;
             listEl.appendChild(item);
         });
     }
@@ -324,32 +304,24 @@
     function renderMessages() {
         messagesContainer.innerHTML = '';
         const chat = state.chats.find(c => c.id === state.activeChatId);
-        if (!chat || !chat.messages?.length) {
-            messagesContainer.innerHTML = '<div class="text-white/50 text-center text-sm">Send a message to start!</div>'; return;
-        }
+        if (!chat || !chat.messages?.length) { messagesContainer.innerHTML = '<div class="text-white/50 text-center text-sm">Send a message to start!</div>'; return; }
         chat.messages.forEach(msg => messagesContainer.appendChild(createMessageDOM(msg)));
         messagesContainer.scrollTop = messagesContainer.scrollHeight;
     }
     
     function createMessageDOM(msg) {
         const mine = msg.sender_id === state.currentUser.id;
-        const chat = state.chats.find(c => c.id === state.activeChatId);
-        const sender = chat ? chat.participants.find(p => p.id === msg.sender_id) : { name: 'User', picture: '' };
-        const senderPicture = msg.sender_picture || sender.picture; 
-        const li = document.createElement('li');
-        li.id = `msg-${msg.id}`;
+        const li = document.createElement('li'); li.id = `msg-${msg.id}`;
         li.className = `message-container flex items-start gap-3 max-w-[85%] ${mine ? 'flex-row-reverse ml-auto' : 'mr-auto'}`;
-        li.innerHTML = `<img src="${senderPicture}" alt="${sender.name}" class="h-8 w-8 rounded-full object-cover mt-1 flex-shrink-0"><div class="flex-1 relative"><div class="message-wrapper ${mine ? 'mine' : 'theirs'}"><div class="bubble ${mine ? 'me' : 'them'}">${!mine ? `<div class="font-bold text-sm mb-1 text-indigo-300">${sender.name}</div>` : ''}${renderMessageContent(msg)}${renderMessageMeta(msg)}</div><div class="reactions-display"></div></div><button class="reaction-button p-1 rounded-full bg-slate-700 hover:bg-slate-600"><svg class="w-5 h-5" viewBox="0 0 24 24" fill="none" stroke="currentColor"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg></button><div class="reaction-picker hidden">${['👍', '❤️', '😂', '😯', '😢', '🙏'].map(emoji => `<span>${emoji}</span>`).join('')}</div></div>`;
+        const sender = state.chats.find(c => c.id === msg.chat_id)?.participants.find(p => p.id === msg.sender_id) || {name: 'User', picture: ''};
+        li.innerHTML = `<img src="${msg.sender_picture || sender.picture}" alt="${sender.name}" class="h-8 w-8 rounded-full object-cover mt-1 flex-shrink-0"><div class="flex-1 relative"><div class="message-wrapper ${mine ? 'mine' : 'theirs'}"><div class="bubble ${mine ? 'me' : 'them'}">${!mine ? `<div class="font-bold text-sm mb-1 text-indigo-300">${sender.name}</div>` : ''}${renderMessageContent(msg)}${renderMessageMeta(msg, mine)}</div><div class="reactions-display"></div></div><button class="reaction-button p-1 rounded-full bg-slate-700 hover:bg-slate-600"><svg class="w-5 h-5" viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"></circle><path d="M8 14s1.5 2 4 2 4-2 4-2"></path><line x1="9" y1="9" x2="9.01" y2="9"></line><line x1="15" y1="9" x2="15.01" y2="9"></line></svg></button><div class="reaction-picker hidden">${['👍', '❤️', '😂', '😯', '😢', '🙏'].map(emoji => `<span>${emoji}</span>`).join('')}</div></div>`;
         li.querySelector('.reactions-display').innerHTML = renderReactions(msg);
         return li;
     }
     
     function updateMessageDOM(msg) {
-        const oldMsgElement = document.getElementById(`msg-${msg.id}`);
-        if (oldMsgElement) {
-            const newMsgElement = createMessageDOM(msg);
-            oldMsgElement.parentNode.replaceChild(newMsgElement, oldMsgElement);
-        }
+        const oldEl = document.getElementById(`msg-${msg.id}`);
+        if (oldEl) oldEl.replaceWith(createMessageDOM(msg));
     }
 
     function renderMessageContent(msg) {
@@ -363,62 +335,42 @@
                 return `<div class="whitespace-pre-wrap break-words">${displayText}</div>`;
         }
     }
-    function renderMessageMeta(msg) {
+    function renderMessageMeta(msg, mine) {
         const myLang = state.currentUser.default_language || 'en';
         const hasTranslation = msg.translations && msg.translations[myLang] && Object.keys(msg.translations).length > 1;
-        return `<div class="flex items-center gap-2 mt-1 text-[11px] text-white/60"><span>${formatTime(msg.created_at)}</span>${msg.message_type === 'text' && hasTranslation ? `<button class="underline toggle-translation">Show original</button>` : ''}</div>`;
+        const statusTicks = mine ? `<span class="status-ticks ${msg.status === 'read' ? 'read' : ''}">${msg.status === 'sent' ? '✓' : '✓✓'}</span>` : '';
+        return `<div class="flex items-center gap-2 mt-1 text-[11px] text-white/60"><span>${formatTime(msg.created_at)}</span>${msg.message_type === 'text' && hasTranslation ? `<button class="underline toggle-translation">Show original</button>` : ''}${statusTicks}</div>`;
     }
     function renderReactions(msg) {
         if (!msg.reactions || Object.keys(msg.reactions).length === 0) return '';
-        return Object.entries(msg.reactions).map(([emoji, userIds]) => {
-            const reactedByMe = userIds.includes(state.currentUser.id);
-            return `<div class="reaction-chip ${reactedByMe ? 'reacted-by-me' : ''}" data-emoji="${emoji}">${emoji} <span>${userIds.length}</span></div>`;
-        }).join('');
+        return Object.entries(msg.reactions).map(([emoji, userIds]) => { const reactedByMe = userIds.includes(state.currentUser.id); return `<div class="reaction-chip ${reactedByMe ? 'reacted-by-me' : ''}" data-emoji="${emoji}">${emoji} <span>${userIds.length}</span></div>`; }).join('');
     }
 
-    document.addEventListener('click', e => {
-        if (!e.target.closest('.reaction-button') && !e.target.closest('.reaction-picker')) {
-            document.querySelectorAll('.reaction-picker').forEach(p => p.classList.add('hidden'));
-        }
-    });
+    document.addEventListener('click', e => { if (!e.target.closest('.reaction-button') && !e.target.closest('.reaction-picker')) { document.querySelectorAll('.reaction-picker').forEach(p => p.classList.add('hidden')); } });
     messagesContainer.addEventListener('click', e => {
-        const msgContainer = e.target.closest('.message-container');
-        if (!msgContainer) return;
+        const msgContainer = e.target.closest('.message-container'); if (!msgContainer) return;
         const msgId = msgContainer.id.replace('msg-', '');
-
-        if (e.target.closest('.reaction-button')) {
-            msgContainer.querySelector('.reaction-picker').classList.toggle('hidden');
-        } else if (e.target.closest('.reaction-picker span')) {
-            const emoji = e.target.textContent; sendReaction(msgId, emoji); msgContainer.querySelector('.reaction-picker').classList.add('hidden');
-        } else if (e.target.closest('.reaction-chip')) {
-            const emoji = e.target.closest('.reaction-chip').dataset.emoji; sendReaction(msgId, emoji);
-        } else if (e.target.closest('.toggle-translation')) {
+        if (e.target.closest('.reaction-button')) msgContainer.querySelector('.reaction-picker').classList.toggle('hidden');
+        else if (e.target.closest('.reaction-picker span')) { const emoji = e.target.textContent; sendReaction(msgId, emoji); msgContainer.querySelector('.reaction-picker').classList.add('hidden'); } 
+        else if (e.target.closest('.reaction-chip')) { const emoji = e.target.closest('.reaction-chip').dataset.emoji; sendReaction(msgId, emoji); } 
+        else if (e.target.closest('.toggle-translation')) {
             const msg = findMessage(state.activeChatId, msgId); if (!msg) return;
-            const textEl = msgContainer.querySelector('.bubble > div:first-child');
-            const myLang = state.currentUser.default_language || 'en';
-            const translatedText = msg.translations[myLang]; const originalText = msg.original_content;
-            if (textEl.textContent === translatedText) {
-                textEl.textContent = originalText; e.target.textContent = 'Show translated';
-            } else {
-                textEl.textContent = translatedText; e.target.textContent = 'Show original';
-            }
+            const textEl = msgContainer.querySelector('.whitespace-pre-wrap');
+            const myLang = state.currentUser.default_language || 'en'; const translatedText = msg.translations[myLang]; const originalText = msg.original_content;
+            if (textEl.textContent === translatedText) { textEl.textContent = originalText; e.target.textContent = 'Show translated'; } 
+            else { textEl.textContent = translatedText; e.target.textContent = 'Show original'; }
         }
     });
-    function sendReaction(message_id, emoji) {
-        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-        state.ws.send(JSON.stringify({ type: 'reaction', chat_id: state.activeChatId, message_id, emoji }));
-    }
+    function sendReaction(message_id, emoji) { if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return; state.ws.send(JSON.stringify({ type: 'reaction', chat_id: state.activeChatId, message_id, emoji })); }
 
     el('#composer').addEventListener('submit', e => {
         e.preventDefault(); const content = messageInput.value.trim(); if (!content) return;
         state.ws.send(JSON.stringify({ type: 'message', chat_id: state.activeChatId, message_type: 'text', content }));
-        messageInput.value = ''; messageInput.style.height = 'auto'; emojiPicker.classList.add('hidden');
-        sendTyping(false); // Stop typing indicator on send
+        messageInput.value = ''; messageInput.style.height = 'auto'; emojiPicker.classList.add('hidden'); sendTyping(false);
     });
     fileInput.addEventListener('change', async e => {
         const file = e.target.files[0]; if (!file || !state.activeChatId) return;
-        el('#upload-progress').classList.remove('hidden');
-        const formData = new FormData(); formData.append('file', file);
+        el('#upload-progress').classList.remove('hidden'); const formData = new FormData(); formData.append('file', file);
         try {
             const res = await fetch(`${API_BASE_URL}/uploads?token=${state.token}`, { method: 'POST', body: formData });
             if (!res.ok) { const err = await res.json(); throw new Error(err.detail || 'Upload failed'); }
@@ -449,34 +401,22 @@
         const newLang = e.target.value; if (state.currentUser.default_language === newLang) return;
         state.currentUser.default_language = newLang;
         if(state.activeChatId) await reloadMessagesForActiveChat();
-        try {
-            await fetch(`${API_BASE_URL}/users/me?token=${state.token}`, {
-                method: 'PATCH', headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ default_language: newLang }),
-            });
+        try { await fetch(`${API_BASE_URL}/users/me?token=${state.token}`, { method: 'PATCH', headers: { 'Content-Type': 'application/json' }, body: JSON.stringify({ default_language: newLang }), });
         } catch (error) { console.error("Failed to update language:", error); }
     });
 
     let typingTimeout = null;
-    function sendTyping(isTyping) {
-        if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return;
-        state.ws.send(JSON.stringify({ type: 'typing', chat_id: state.activeChatId, is_typing: isTyping }));
-    }
+    function sendTyping(isTyping) { if (!state.ws || state.ws.readyState !== WebSocket.OPEN) return; state.ws.send(JSON.stringify({ type: 'typing', chat_id: state.activeChatId, is_typing: isTyping })); }
     messageInput.addEventListener('input', () => {
-        messageInput.style.height = 'auto';
-        messageInput.style.height = `${Math.min(160, messageInput.scrollHeight)}px`;
-        clearTimeout(typingTimeout);
-        sendTyping(true);
-        typingTimeout = setTimeout(() => sendTyping(false), 2000); // User is considered "stopped" after 2s
+        messageInput.style.height = 'auto'; messageInput.style.height = `${Math.min(160, messageInput.scrollHeight)}px`;
+        clearTimeout(typingTimeout); sendTyping(true);
+        typingTimeout = setTimeout(() => sendTyping(false), 2000);
     });
 
     window.onload = () => {
         const urlParams = new URLSearchParams(window.location.search);
         state.token = urlParams.get('token') || localStorage.getItem('lingua_link_token');
-        if (urlParams.has('token')) {
-            localStorage.setItem('lingua_link_token', state.token);
-            window.history.replaceState({}, document.title, "/");
-        }
+        if (urlParams.has('token')) { localStorage.setItem('lingua_link_token', state.token); window.history.replaceState({}, document.title, "/"); }
         initializeApp();
     };
     </script>
